@@ -8,6 +8,13 @@
   "author": "Adnan0-IM",
   "icon": "shield",
   "type": "widget",
+  "category": "Network & Security",
+  "capabilities": [
+    "network-control",
+    "tor-gateway",
+    "ip-checker",
+    "dankbar-widget"
+  ],
   "component": "./NipeControl.qml",
   "settings": "./NipeControlSettings.qml",
   "requires_dms": ">=1.4.0",
