@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/AvengeMedia/DankMaterialShell/raw/refs/heads/master/PLUGINS/plugin-schema.json",
+  "id": "nipeControl",
+  "name": "Nipe Control",
+  "description": "Control Nipe Tor gateway and monitor external IP / connection status.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "Antigravity",
+  "icon": "shield",
+  "type": "widget",
+  "component": "./NipeControl.qml",
+  "settings": "./NipeControlSettings.qml",
+  "requires_dms": ">=1.4.0",
+  "permissions": [
+    "settings_read",
+    "settings_write"
+  ]
+}
