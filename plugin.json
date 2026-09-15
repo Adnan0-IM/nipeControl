@@ -5,7 +5,7 @@
   "description": "Control Nipe Tor gateway and monitor external IP / connection status.",
   "version": "1.0.0",
   "license": "MIT",
-  "author": "Antigravity",
+  "author": "Adnan0-IM",
   "icon": "shield",
   "type": "widget",
   "component": "./NipeControl.qml",
