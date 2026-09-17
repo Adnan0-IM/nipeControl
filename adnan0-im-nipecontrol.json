@@ -1,11 +1,11 @@
 {
     "id": "nipeControl",
     "name": "Nipe Control",
-    "capabilities": ["dankbar-widget"],
-    "category": "utilities",
+    "capabilities": ["dankbar-widget", "network-control", "leak-detection", "country-detection", "notifications", "auto-start"],
+    "category": "network",
     "repo": "https://github.com/Adnan0-IM/nipeControl",
     "author": "Adnan0-IM",
-    "description": "Start, stop, and monitor Nipe Tor gateway connection status and external IP address.",
+    "description": "Start, stop, and monitor Nipe Tor gateway connection status, external IP, exit node country, and run one-click DNS/IP leak tests with desktop notifications.",
     "dependencies": [
         "perl",
         "perl-config-simple",
@@ -13,7 +13,10 @@
         "perl-readonly",
         "perl-io-socket-ssl",
         "perl-net-ssleay",
-        "tor"
+        "tor",
+        "curl",
+        "jq",
+        "libnotify"
     ],
     "compositors": ["any"],
     "distro": ["any"]

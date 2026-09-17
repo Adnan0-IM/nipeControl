@@ -1,19 +1,24 @@
 # Nipe Control Plugin for DankMaterialShell
 
-**Nipe Control** is a feature-rich, robust widget plugin for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell). It provides seamless integration with [Nipe](https://github.com/htbridge/nipe)—an engine that makes the Tor network your default gateway—allowing you to start, stop, restart, and monitor your connection state and external IP address directly from your shell bar.
+**Nipe Control** is a feature-rich, robust widget plugin for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell). It provides seamless integration with [Nipe](https://github.com/htbridge/nipe)—an engine that makes the Tor network your default gateway—allowing you to start, stop, restart, and monitor your connection state, external IP address, country, and run leak tests directly from your shell bar.
 
 ---
 
 ## 🚀 Features
 
-- **Live Bar Widget**: Displays real-time Nipe status and external IP address in your top bar (supports horizontal and vertical bar layouts).
+- **Live Bar Widget**: Displays real-time Nipe status, external IP address, and country code in your top bar (supports horizontal and vertical bar layouts).
 - **Interactive Popout Dashboard**:
   - One-click **Start**, **Stop**, and **Restart** controls.
   - Live external IP display with a **Copy IP** button (supports `wl-copy` & `xclip`).
+  - **Country detection** showing exit node location with flag/code.
+  - **Leak Test** button to verify no DNS/IP leaks when Tor is active.
   - Connection status badge and active routing indicator.
   - Detailed error reporting (sudoers warnings, missing dependencies, unreadable status).
+- **Status Change Notifications**: Desktop notifications when Nipe starts/stops.
 - **Non-Blocking Helper Script**: `nipe-widget.sh` handles status queries in JSON without blocking the UI or hanging on sudo password prompts.
-- **Integrated Settings**: Configurable Nipe installation path and auto-refresh intervals via DankMaterialShell plugin settings.
+- **Integrated Settings**: Configurable Nipe installation path, auto-refresh intervals, country display, notifications, and IP API endpoint via DankMaterialShell plugin settings.
+- **Loading Indicators**: Visual feedback during status checks and control operations.
+- **Tooltips**: Hover the bar widget for detailed status info.
 
 ---
 
@@ -22,12 +27,17 @@
 To use this plugin, you must have **Nipe** installed alongside its required Perl dependencies.
 
 ### 1. System Requirements & Core Packages
+
 - **Nipe** (cloned engine repository)
 - **Tor service** (`tor`)
 - **Perl** (5.30 or newer)
 - **Clipboard Utility** (Optional, for Copy IP feature): `wl-copy` (Wayland) or `xclip` (X11)
+- **curl** (for IP/leak checks)
+- **jq** (for JSON parsing in leak test)
+- **notify-send** (for desktop notifications, usually from `libnotify`)
 
 ### 2. Perl Dependencies
+
 Nipe requires the following Perl modules:
 
 - `perl-config-simple` (`Config::Simple`)
@@ -47,23 +57,28 @@ Nipe requires the following Perl modules:
 Select the command corresponding to your Linux distribution:
 
 #### **Arch Linux / Manjaro**
+
 ```bash
-sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard
+sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard curl jq libnotify
 ```
 
 #### **Debian / Ubuntu / Kali Linux / Linux Mint**
+
 ```bash
 sudo apt update
-sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard
+sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard curl jq libnotify-bin
 ```
 
 #### **Fedora / RHEL**
+
 ```bash
-sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard
+sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard curl jq libnotify
 ```
 
 #### **Universal CPAN Method (Alternative)**
+
 If any Perl package is unavailable in your distribution's repositories, install them using CPAN:
+
 ```bash
 sudo cpan install Config::Simple JSON Readonly IO::Socket::SSL Net::SSLeay Try::Tiny
 ```
@@ -89,11 +104,13 @@ sudo perl nipe.pl install
 Nipe requires root privileges to configure `iptables` rules and check connection status. To allow the background widget to query status and toggle Nipe without blocking on interactive password prompts:
 
 1. Create a sudoers file for Nipe:
+
    ```bash
    sudo visudo /etc/sudoers.d/nipe
    ```
 
 2. Add the following rule (replace `username` with your Linux username or use `%wheel` / `%sudo` group):
+
    ```sudoers
    # Allow user to run Nipe script as root without password prompt
    username ALL=(ALL) NOPASSWD: /usr/bin/perl /home/username/nipe/nipe.pl *
@@ -112,21 +129,32 @@ Ensure `nipe-widget.sh` is placed in `~/.local/bin/` and made executable:
 
 ```bash
 mkdir -p ~/.local/bin
+cp nipe-widget.sh ~/.local/bin/
 chmod +x ~/.local/bin/nipe-widget.sh
 ```
 
 You can test the helper script from your terminal:
+
 ```bash
 # Check perl dependencies
 ~/.local/bin/nipe-widget.sh check-deps
 
 # Output JSON status
 ~/.local/bin/nipe-widget.sh json-status
+
+# Run leak test (requires Nipe to be active)
+~/.local/bin/nipe-widget.sh leak-test
 ```
 
 Expected output of `json-status`:
+
 ```json
-{"active": false, "ip": "Unknown", "error": null, "nipe_dir": "/home/username/nipe"}
+{
+  "active": false,
+  "ip": "Unknown",
+  "error": null,
+  "nipe_dir": "/home/username/nipe"
+}
 ```
 
 ---
@@ -139,6 +167,10 @@ Expected output of `json-status`:
 4. Configure options under **Nipe Control Settings**:
    - **Custom Nipe Directory**: Specify path if Nipe is installed outside `~/nipe`.
    - **Refresh Interval**: Set status refresh rate (default `15` seconds).
+   - **Show Country Code**: Display country code/name alongside IP.
+   - **Enable Notifications**: Get desktop alerts on status changes.
+   - **Auto-start on Login**: Automatically enable Tor gateway when DMS starts.
+   - **IP Info API Endpoint**: Customize API for IP/country lookup.
 
 ---
 
@@ -146,15 +178,23 @@ Expected output of `json-status`:
 
 The helper script can also be executed directly from the terminal for debugging:
 
-| Command | Description |
-| :--- | :--- |
-| `nipe-widget.sh start` | Starts Nipe Tor gateway |
-| `nipe-widget.sh stop` | Stops Nipe Tor gateway |
-| `nipe-widget.sh restart` | Restarts Nipe Tor gateway |
-| `nipe-widget.sh status` | Prints raw Nipe status output |
+| Command                      | Description                                   |
+| :--------------------------- | :-------------------------------------------- |
+| `nipe-widget.sh start`       | Starts Nipe Tor gateway                       |
+| `nipe-widget.sh stop`        | Stops Nipe Tor gateway                        |
+| `nipe-widget.sh restart`     | Restarts Nipe Tor gateway                     |
+| `nipe-widget.sh status`      | Prints raw Nipe status output                 |
 | `nipe-widget.sh json-status` | Returns structured JSON status for UI widgets |
-| `nipe-widget.sh check-deps` | Verifies required Perl modules |
-| `nipe-widget.sh path` | Displays detected Nipe installation path |
+| `nipe-widget.sh check-deps`  | Verifies required Perl + system modules       |
+| `nipe-widget.sh leak-test`   | Runs DNS/IP leak test (requires active Nipe)  |
+| `nipe-widget.sh path`        | Displays detected Nipe installation path      |
+
+Optionally pass a custom IP API base URL as a second argument, e.g.:
+
+```bash
+~/.local/bin/nipe-widget.sh json-status https://api.example.com
+~/.local/bin/nipe-widget.sh leak-test https://api.example.com
+```
 
 ---
 
@@ -166,6 +206,10 @@ The helper script can also be executed directly from the terminal for debugging:
   Run `nipe-widget.sh check-deps` in terminal to identify missing Perl packages.
 - **Nipe fails to start**:
   Verify the Tor service is running: `sudo systemctl status tor`.
+- **Leak test shows false positives**:
+  The IP leak check compares your live exit IP against the Tor gateway IP (via your IP API). The DNS check heuristically compares DNS resolution of a known host to your exit IP. If the API is blocked or unreachable, the test may report a leak or an error.
+- **Country not showing**:
+  Ensure `curl` and `jq` are installed. Check IP API endpoint in settings (default: ipinfo.io).
 - **Custom Directory**:
   If Nipe is located in a non-standard directory (e.g. `/opt/nipe`), specify the path in `NipeControlSettings.qml` or set `NIPE_DIR=/your/path` in `~/.config/nipeControl/config`.
 

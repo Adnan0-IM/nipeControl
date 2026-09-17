@@ -2,8 +2,8 @@
   "$schema": "https://github.com/AvengeMedia/DankMaterialShell/raw/refs/heads/master/PLUGINS/plugin-schema.json",
   "id": "nipeControl",
   "name": "Nipe Control",
-  "description": "Control Nipe Tor gateway and monitor external IP / connection status.",
-  "version": "1.0.0",
+  "description": "Control Nipe Tor gateway, monitor external IP / connection status, detect IP & DNS leaks, show exit node country, and get status notifications.",
+  "version": "2.0.0",
   "license": "MIT",
   "author": "Adnan0-IM",
   "icon": "shield",
@@ -13,6 +13,10 @@
     "network-control",
     "tor-gateway",
     "ip-checker",
+    "leak-detection",
+    "country-detection",
+    "notifications",
+    "auto-start",
     "dankbar-widget"
   ],
   "component": "./NipeControl.qml",
@@ -20,6 +24,8 @@
   "requires_dms": ">=1.4.0",
   "permissions": [
     "settings_read",
-    "settings_write"
+    "settings_write",
+    "network",
+    "notifications"
   ]
 }
