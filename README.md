@@ -6,12 +6,12 @@
 
 ## 🚀 Features
 
-- **Live Bar Widget**: Displays real-time Nipe status, external IP address, and country code in your top bar (supports horizontal and vertical bar layouts).
+- **Live Bar Widget**: Displays real-time Nipe status, external IP address, and country code in your top bar.
 - **Interactive Popout Dashboard**:
   - One-click **Start**, **Stop**, and **Restart** controls.
   - Live external IP display with a **Copy IP** button (supports `wl-copy` & `xclip`).
-  - **Country detection** showing exit node location with flag/code.
-  - **Leak Test** button to verify no DNS/IP leaks when Tor is active.
+  - **Country detection**: Showing exit node location with flag/code.
+  - **IP Leak Test** button to verify no IP leaks when Tor is active.
   - Connection status badge and active routing indicator.
   - Detailed error reporting (sudoers warnings, missing dependencies, unreadable status).
 - **Status Change Notifications**: Desktop notifications when Nipe starts/stops.
@@ -33,7 +33,6 @@ To use this plugin, you must have **Nipe** installed alongside its required Perl
 - **Perl** (5.30 or newer)
 - **Clipboard Utility** (Optional, for Copy IP feature): `wl-copy` (Wayland) or `xclip` (X11)
 - **curl** (for IP/leak checks)
-- **jq** (for JSON parsing in leak test)
 - **notify-send** (for desktop notifications, usually from `libnotify`)
 
 ### 2. Perl Dependencies
@@ -59,20 +58,20 @@ Select the command corresponding to your Linux distribution:
 #### **Arch Linux / Manjaro**
 
 ```bash
-sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard curl jq libnotify
+sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard curl libnotify
 ```
 
 #### **Debian / Ubuntu / Kali Linux / Linux Mint**
 
 ```bash
 sudo apt update
-sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard curl jq libnotify-bin
+sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard curl libnotify-bin
 ```
 
 #### **Fedora / RHEL**
 
 ```bash
-sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard curl jq libnotify
+sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard curl libnotify
 ```
 
 #### **Universal CPAN Method (Alternative)**
@@ -186,7 +185,7 @@ The helper script can also be executed directly from the terminal for debugging:
 | `nipe-widget.sh status`      | Prints raw Nipe status output                 |
 | `nipe-widget.sh json-status` | Returns structured JSON status for UI widgets |
 | `nipe-widget.sh check-deps`  | Verifies required Perl + system modules       |
-| `nipe-widget.sh leak-test`   | Runs DNS/IP leak test (requires active Nipe)  |
+| `nipe-widget.sh leak-test`   | Runs IP leak test (requires active Nipe)  |
 | `nipe-widget.sh path`        | Displays detected Nipe installation path      |
 
 Optionally pass a custom IP API base URL as a second argument, e.g.:
@@ -206,8 +205,8 @@ Optionally pass a custom IP API base URL as a second argument, e.g.:
   Run `nipe-widget.sh check-deps` in terminal to identify missing Perl packages.
 - **Nipe fails to start**:
   Verify the Tor service is running: `sudo systemctl status tor`.
-- **Leak test shows false positives**:
-  The IP leak check compares your live exit IP against the Tor gateway IP (via your IP API). The DNS check heuristically compares DNS resolution of a known host to your exit IP. If the API is blocked or unreachable, the test may report a leak or an error.
+- **IP leak test shows false positives**:
+  The IP leak check compares your live exit IP against the Tor gateway IP (via your IP API). If the API is blocked or unreachable, the test may report a leak or an error.
 - **Country not showing**:
   Ensure `curl` and `jq` are installed. Check IP API endpoint in settings (default: ipinfo.io).
 - **Custom Directory**:

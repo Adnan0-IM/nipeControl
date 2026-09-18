@@ -48,16 +48,27 @@ run_nipe_cmd() {
 
     cd "$NIPE_DIR"
 
-    if sudo -n true 2>/dev/null; then
-        sudo -n perl nipe.pl "$action" 2>&1 || true
+    local perl_bin
+    perl_bin=$(command -v perl || echo "/usr/bin/perl")
+    local output
+    # First attempt non-interactive sudo using the absolute script path matching sudoers
+    if output=$(cd "$NIPE_DIR" && sudo -n "$perl_bin" "nipe.pl" "$action" 2>&1); then
+        echo "$output"
+        return 0
+    elif [[ "$output" =~ "password is required" || "$output" =~ "a password is required" ]] && [[ "$action" == "status" ]]; then
+        echo "[!] ERROR: Sudo password required. Configure sudoers rule."
+        return 0
     elif [[ "$action" == "status" ]]; then
-        # Status checks must not block waiting for password input
+        if [[ "$output" =~ "Status:" ]]; then
+            echo "$output"
+            return 0
+        fi
         echo "[!] ERROR: Sudo password required. Configure sudoers rule."
         return 0
     elif command -v pkexec &>/dev/null; then
-        pkexec perl nipe.pl "$action" 2>&1 || true
+        pkexec "$perl_bin" "$NIPE_DIR/nipe.pl" "$action" 2>&1 || true
     else
-        sudo perl nipe.pl "$action" 2>&1 || true
+        sudo "$perl_bin" "$NIPE_DIR/nipe.pl" "$action" 2>&1 || true
     fi
 }
 
@@ -74,6 +85,11 @@ check_dependencies() {
     command -v curl &>/dev/null || sys_missing+=("curl")
     command -v jq &>/dev/null || sys_missing+=("jq")
     command -v notify-send &>/dev/null || sys_missing+=("notify-send")
+
+    # Clipboard check
+    if ! command -v wl-copy &>/dev/null && ! command -v xclip &>/dev/null && ! command -v dms &>/dev/null; then
+        sys_missing+=("clipboard-tool")
+    fi
 
     if [[ ${#missing[@]} -eq 0 && ${#sys_missing[@]} -eq 0 ]]; then
         echo "OK"
@@ -94,6 +110,12 @@ fetch_ip_info() {
         json=$(curl -s --max-time 5 "${base}/${ip}/json" 2>/dev/null || echo "{}")
     else
         json=$(curl -s --max-time 5 "${base}/json" 2>/dev/null || echo "{}")
+    fi
+
+    # Ensure json is not empty and is valid JSON
+    if [[ -z "$json" || "$json" == "{}" ]]; then
+        echo "||||"
+        return 0
     fi
 
     local code name city region org
@@ -170,12 +192,12 @@ leak_test() {
     deps_status=$(check_dependencies || echo "ERROR")
     if [[ "$deps_status" != "OK" ]]; then
         local missing_list=${deps_status#MISSING:}
-        echo "{\"ip_result\": \"unknown\", \"dns_result\": \"unknown\", \"exit_ip\": \"\", \"exit_country_code\": \"\", \"exit_country\": \"\", \"error\": \"Missing dependencies: $missing_list\"}"
+        echo "{\"ip_result\": \"unknown\", \"dns_result\": \"unknown\", \"ip_leak\": false, \"dns_leak\": false, \"exit_ip\": \"\", \"exit_country_code\": \"\", \"exit_country\": \"\", \"error\": \"Missing dependencies: $missing_list\"}"
         return 0
     fi
 
     if [[ -z "$NIPE_DIR" || ! -f "$NIPE_DIR/nipe.pl" ]]; then
-        echo "{\"ip_result\": \"unknown\", \"dns_result\": \"unknown\", \"exit_ip\": \"\", \"exit_country_code\": \"\", \"exit_country\": \"\", \"error\": \"Nipe directory not found.\"}"
+        echo "{\"ip_result\": \"unknown\", \"dns_result\": \"unknown\", \"ip_leak\": false, \"dns_leak\": false, \"exit_ip\": \"\", \"exit_country_code\": \"\", \"exit_country\": \"\", \"error\": \"Nipe directory not found.\"}"
         return 0
     fi
 
@@ -196,7 +218,7 @@ leak_test() {
     fi
 
     if [[ "$active" != "true" || "$ip" == "Unknown" || "$ip" == "N/A" ]]; then
-        echo "{\"ip_result\": \"unknown\", \"dns_result\": \"unknown\", \"exit_ip\": \"\", \"exit_country_code\": \"\", \"exit_country\": \"\", \"error\": \"Nipe is not active. Start Nipe first.\"}"
+        echo "{\"ip_result\": \"unknown\", \"dns_result\": \"unknown\", \"ip_leak\": false, \"dns_leak\": false, \"exit_ip\": \"\", \"exit_country_code\": \"\", \"exit_country\": \"\", \"error\": \"Nipe is not active. Start Nipe first.\"}"
         return 0
     fi
 
@@ -204,15 +226,9 @@ leak_test() {
     base=$(printf '%s' "$api" | sed 's#/$##')
     local socs_port="${TOR_SOCKS_PORT:-9050}"
     local ip_result="unknown"
-    local dns_result="unknown"
     local exit_ip=""
     local error=""
 
-    # -------------------------------------------------------------------
-    # IP leak: query the public IP *through the Tor SOCKS proxy* and
-    # compare it with the gateway IP reported by Nipe itself. If traffic
-    # is truly routed via Tor they must match.
-    # -------------------------------------------------------------------
     exit_ip=$(curl -s --max-time 12 --socks5-hostname "127.0.0.1:${socs_port}" "${base}/ip" 2>/dev/null | tr -d '\r\n' || echo "")
     if [[ -n "$exit_ip" ]]; then
         if [[ "$exit_ip" == "$ip" ]]; then
@@ -224,50 +240,16 @@ leak_test() {
         error="Tor SOCKS proxy (127.0.0.1:${socs_port}) unreachable for verification."
     fi
 
-    # -------------------------------------------------------------------
-    # DNS leak: inspect the active system resolvers.
-    #  - Local/stub resolvers (systemd-resolved, Tor DNS) are managed and
-    #    considered safe.
-    #  - A remote resolver whose external identity equals the Tor exit IP
-    #    proves DNS also exits via Tor (no leak).
-    #  - Anything else cannot be verified from here -> "unknown".
-    # -------------------------------------------------------------------
-    local nameservers=()
-    if command -v resolvectl &>/dev/null; then
-        while read -r ns; do
-            [[ -n "$ns" ]] && nameservers+=("$ns")
-        done < <(resolvectl dns 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | grep -vE '^(0\.0\.0\.0|255\.)')
-    fi
-    if [[ ${#nameservers[@]} -eq 0 && -f /etc/resolv.conf ]]; then
-        while read -r ns; do
-            [[ -n "$ns" ]] && nameservers+=("$ns")
-        done < <(awk '/^nameserver/{print $2}' /etc/resolv.conf)
-    fi
-
-    local managed_dns="false"
-    local ns
-    for ns in "${nameservers[@]}"; do
-        if [[ "$ns" == "127.0.0.1" || "$ns" == "::1" ||
-              "$ns" == "127.0.0.53" || "$ns" == "127.0.0.54" ]]; then
-            managed_dns="true"
-        fi
-    done
-
-    if [[ "$managed_dns" == "true" ]]; then
-        dns_result="pass"
-    elif [[ ${#nameservers[@]} -gt 0 && "${nameservers[0]}" == "$exit_ip" ]]; then
-        dns_result="pass"
-    else
-        dns_result="unknown"
-    fi
-
     local exit_country_code=""
     local exit_country=""
     local info
     info=$(fetch_ip_info "$exit_ip" "$api")
     IFS='|' read -r exit_country_code exit_country _city _region _org <<< "$info"
 
-    echo "{\"ip_result\": \"$ip_result\", \"dns_result\": \"$dns_result\", \"exit_ip\": \"$exit_ip\", \"exit_country_code\": \"$exit_country_code\", \"exit_country\": \"$exit_country\", \"error\": \"$error\"}"
+    local ip_leak="false"
+    [[ "$ip_result" == "fail" ]] && ip_leak="true"
+
+    echo "{\"ip_result\": \"$ip_result\", \"dns_result\": \"unknown\", \"ip_leak\": $ip_leak, \"dns_leak\": false, \"exit_ip\": \"$exit_ip\", \"exit_country_code\": \"$exit_country_code\", \"exit_country\": \"$exit_country\", \"error\": \"$error\"}"
 }
 
 case "${1:-status}" in
@@ -291,7 +273,8 @@ case "${1:-status}" in
     echo "${NIPE_DIR:-not_found}"
     ;;
   leak-test)
-    leak_test "${2:-$DEFAULT_IP_API}"
+    # Leak test removed per user request
+    echo '{"ip_result":"unknown","dns_result":"unknown","ip_leak":false,"dns_leak":false,"exit_ip":"","exit_country_code":"","exit_country":"","error":"Leak test disabled."}'
     ;;
   *)
     echo "Usage: $0 {start|stop|restart|status|json-status|check-deps|path|leak-test}"

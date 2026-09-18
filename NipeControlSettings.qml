@@ -9,20 +9,25 @@ PluginSettings {
     id: root
     pluginId: "nipeControl"
 
-    StyledText {
+    Column {
         width: parent.width
-        text: "Nipe Control Settings"
-        font.pixelSize: Theme.fontSizeLarge
-        font.weight: Font.Bold
-        color: Theme.surfaceText
-    }
+        spacing: Theme.spacingXS
 
-    StyledText {
-        width: parent.width
-        text: "Manage the Tor gateway integration: routing status, exit country, leak testing, notifications and startup behavior."
-        font.pixelSize: Theme.fontSizeSmall
-        color: Theme.surfaceVariantText
-        wrapMode: Text.WordWrap
+        StyledText {
+            width: parent.width
+            text: "Nipe Control Settings"
+            font.pixelSize: Theme.fontSizeLarge
+            font.weight: Font.Bold
+            color: Theme.surfaceText
+        }
+
+        StyledText {
+            width: parent.width
+            text: "Manage the Tor gateway integration: routing status, exit country, leak testing, notifications and startup behavior."
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.surfaceVariantText
+            wrapMode: Text.WordWrap
+        }
     }
 
     // ===================================================================
@@ -149,7 +154,7 @@ PluginSettings {
         width: parent.width
         height: sudoColumn.implicitHeight + Theme.spacingL * 2
         radius: Theme.cornerRadius
-        color: Theme.surface
+        color: Theme.surfaceContainerHigh
 
         Column {
             id: sudoColumn
@@ -158,7 +163,7 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
-                spacing: Theme.spacingM
+                spacing: Theme.spacingS
 
                 DankIcon {
                     name: "verified_user"
@@ -177,12 +182,50 @@ PluginSettings {
             }
 
             StyledText {
-                text: "Nipe requires root privileges to manage iptables and Tor routing.\n\nTo allow seamless status checks and widget controls without password prompts, add a sudoers rule:\n\nCreate file `/etc/sudoers.d/nipe` with content:\n`%wheel ALL=(ALL) NOPASSWD: /usr/bin/perl */nipe.pl *`\n\nRefer to the plugin README.md for complete details."
+                text: "Nipe requires root privileges to manage iptables and Tor routing.\n\nTo allow seamless status checks and widget controls without password prompts, add a sudoers rule:"
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
                 width: parent.width
                 lineHeight: 1.4
+            }
+
+            StyledRect {
+                width: parent.width
+                height: codeCol.implicitHeight + Theme.spacingM * 2
+                radius: Theme.cornerRadiusSmall
+                color: Theme.surfaceContainerHighest
+
+                Column {
+                    id: codeCol
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingM
+                    spacing: Theme.spacingXS
+
+                    StyledText {
+                        text: "Create file /etc/sudoers.d/nipe with content (replace /path/to/nipe with your actual Nipe path):"
+                        font.pixelSize: Theme.fontSizeSmall - 2
+                        color: Theme.surfaceVariantText
+                    }
+
+                    StyledText {
+                        text: "%wheel ALL=(ALL) NOPASSWD: /usr/bin/perl /path/to/nipe/nipe.pl *"
+                        font.pixelSize: Theme.fontSizeSmall
+                        font.family: "monospace"
+                        font.weight: Font.Medium
+                        color: Theme.primary
+                        width: parent.width
+                        wrapMode: Text.WrapAnywhere
+                    }
+                }
+            }
+
+            StyledText {
+                text: "Refer to the plugin README.md for complete details."
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.surfaceVariantText
+                wrapMode: Text.WordWrap
+                width: parent.width
             }
         }
     }
@@ -194,21 +237,21 @@ PluginSettings {
         width: parent.width
         height: tipsColumn.implicitHeight + Theme.spacingL * 2
         radius: Theme.cornerRadius
-        color: Theme.surface
+        color: Theme.surfaceContainerHigh
 
         Column {
             id: tipsColumn
             anchors.fill: parent
             anchors.margins: Theme.spacingL
-            spacing: Theme.spacingS
+            spacing: Theme.spacingM
 
             Row {
-                spacing: Theme.spacingM
+                spacing: Theme.spacingS
 
                 DankIcon {
                     name: "lightbulb"
                     size: Theme.iconSize
-                    color: "#f0c24b"
+                    color: Theme.warning
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -239,7 +282,7 @@ PluginSettings {
         width: parent.width
         height: depsColumn.implicitHeight + Theme.spacingL * 2
         radius: Theme.cornerRadius
-        color: Theme.surface
+        color: Theme.surfaceContainerHigh
 
         Column {
             id: depsColumn
@@ -248,7 +291,7 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
-                spacing: Theme.spacingM
+                spacing: Theme.spacingS
 
                 DankIcon {
                     name: "extension"

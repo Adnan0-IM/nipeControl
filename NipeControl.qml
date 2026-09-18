@@ -12,11 +12,14 @@ PluginComponent {
 
     // ---- Configuration from DankMaterialShell plugin settings ----
     property string customNipeDir: pluginData.customNipeDir || ""
-    property int refreshIntervalSec: Math.max(5, parseInt(pluginData.refreshInterval || "15", 10))
+    property int refreshIntervalSec: parseInt(pluginData.refreshInterval, 10) || 15
     property bool showCountry: pluginData.showCountry ?? true
     property bool enableNotifications: pluginData.enableNotifications ?? true
     property bool autoStartEnabled: pluginData.autoStart ?? false
     property string ipInfoApiEndpoint: pluginData.ipInfoApiEndpoint || "https://ipinfo.io"
+
+    // ---- Helper state ----
+    property bool nipeDirValid: false
 
     // ---- State properties ----
     property bool nipeActive: false
@@ -29,7 +32,10 @@ PluginComponent {
     property string city: ""
     property string region: ""
     property string org: ""
-    property bool isLoading: false
+    property bool isActionRunning: false
+    property bool isManualRefreshing: false
+    property bool isBackgroundChecking: false
+    readonly property bool isLoading: isActionRunning || isManualRefreshing || isBackgroundChecking
     property string rawJsonOutput: ""
 
     // ---- Notifications / auto-start bookkeeping ----
@@ -65,17 +71,21 @@ PluginComponent {
         ]);
     }
 
-    function refreshStatus() {
+    function refreshStatus(manual) {
         if (statusProcess.running) return;
         root.rawJsonOutput = "";
-        root.isLoading = true;
+        if (manual) {
+            root.isManualRefreshing = true;
+        } else {
+            root.isBackgroundChecking = true;
+        }
         statusProcess.command = [getHelperPath(), "json-status", root.ipInfoApiEndpoint];
         statusProcess.running = true;
     }
 
     function executeControl(action) {
         if (controlProcess.running) return;
-        root.isLoading = true;
+        root.isActionRunning = true;
         if (action === "start") {
             root.statusText = "Starting...";
         } else if (action === "stop") {
@@ -101,39 +111,35 @@ PluginComponent {
         leakTestProcess.running = true;
     }
 
+    property bool ipCopiedJustNow: false
+    Timer {
+        id: copiedResetTimer
+        interval: 2000
+        repeat: false
+        onTriggered: root.ipCopiedJustNow = false
+    }
+
     function copyIpToClipboard() {
         if (root.ipAddress && root.ipAddress !== "Unknown" && root.ipAddress !== "N/A") {
             Quickshell.execDetached([
                 "sh", "-c",
-                "printf '%s' '" + root.ipAddress + "' | wl-copy 2>/dev/null || printf '%s' '" + root.ipAddress + "' | xclip -selection clipboard 2>/dev/null"
+                "dms cl copy \"$1\" 2>/dev/null || printf '%s' \"$1\" | wl-copy 2>/dev/null || printf '%s' \"$1\" | xclip -selection clipboard 2>/dev/null",
+                "sh", root.ipAddress
             ]);
-            sendNotification("IP Copied", "Copied " + root.ipAddress + " to clipboard.");
-        }
-    }
-
-    function barTooltipText() {
-        if (root.isLoading) return "Checking Nipe status…";
-        if (root.errorMessage !== "") return "Nipe Control Error\n" + root.errorMessage;
-        if (root.nipeActive) {
-            var lines = [];
-            lines.push("Tor Gateway: Active");
-            lines.push("Exit IP: " + root.ipAddress);
-            if (root.showCountry && root.countryCode) {
-                lines.push("Country: " + flagEmoji(root.countryCode) + " " + (root.countryName || root.countryCode));
+            root.ipCopiedJustNow = true;
+            copiedResetTimer.restart();
+            if (typeof ToastService !== "undefined" && ToastService.showInfo) {
+                ToastService.showInfo("Copied " + root.ipAddress + " to clipboard");
+            } else {
+                sendNotification("IP Copied", "Copied " + root.ipAddress + " to clipboard.");
             }
-            if (root.city || root.region) {
-                lines.push("Location: " + [root.city, root.region].filter(Boolean).join(", "));
-            }
-            if (root.org) lines.push("Network: " + root.org);
-            return lines.join("\n");
         }
-        return "Tor Gateway: Inactive\nAll traffic is routed directly";
     }
 
     function leakStateColor() {
         if (root.leakTestState === "ok") return Theme.success;
         if (root.leakTestState === "leak") return Theme.error;
-        if (root.leakTestState === "testing") return "#f0c24b";
+        if (root.leakTestState === "testing") return Theme.warning;
         return Theme.surfaceVariantText;
     }
 
@@ -163,10 +169,14 @@ PluginComponent {
 
         onRunningChanged: {
             if (!running) {
-                root.isLoading = false;
+                root.isManualRefreshing = false;
+                root.isBackgroundChecking = false;
+                root.isActionRunning = false;
                 try {
-                    if (root.rawJsonOutput.trim().length > 0) {
-                        const parsed = JSON.parse(root.rawJsonOutput.trim());
+                    const trimmed = root.rawJsonOutput.trim();
+                    if (trimmed.length > 0) {
+                        const parsed = JSON.parse(trimmed);
+                        if (!parsed) throw new Error("Empty JSON result");
                         const newActive = !!parsed.active;
                         root.nipeActive = newActive;
                         root.ipAddress = parsed.ip || "Unknown";
@@ -245,8 +255,8 @@ PluginComponent {
             if (!running) {
                 try {
                     const parsed = JSON.parse(root.leakTestRaw.trim());
-                    root.leakIp = !!parsed.ip_leak;
-                    root.leakDns = !!parsed.dns_leak;
+                    root.leakIp = (parsed.ip_result === "fail" || !!parsed.ip_leak);
+                    root.leakDns = (parsed.dns_result === "fail" || !!parsed.dns_leak);
                     root.leakExitIp = parsed.exit_ip || "";
                     root.leakExitCountryCode = parsed.exit_country_code || "";
                     root.leakExitCountry = parsed.exit_country || root.leakExitCountryCode;
@@ -272,7 +282,7 @@ PluginComponent {
         id: afterControlTimer
         interval: 1500
         repeat: false
-        onTriggered: root.refreshStatus()
+        onTriggered: root.refreshStatus(true)
     }
 
     Timer {
@@ -280,7 +290,7 @@ PluginComponent {
         interval: root.refreshIntervalSec * 1000
         repeat: true
         running: true
-        onTriggered: root.refreshStatus()
+        onTriggered: root.refreshStatus(false)
     }
 
     Timer {
@@ -288,7 +298,7 @@ PluginComponent {
         interval: 300
         repeat: false
         running: true
-        onTriggered: root.refreshStatus()
+        onTriggered: root.refreshStatus(false)
     }
 
     // =====================================================================
@@ -299,29 +309,24 @@ PluginComponent {
             id: hPill
             spacing: Theme.spacingXS
 
-            BusyIndicator {
-                width: 14
-                height: 14
-                running: root.isLoading
+            DankSpinner {
+                size: Theme.iconSize - 6
+                running: root.isActionRunning || root.isManualRefreshing
                 visible: running
                 anchors.verticalCenter: parent.verticalCenter
-                contentItem: Spinner {
-                    width: 14
-                    height: 14
-                }
             }
 
             DankIcon {
                 name: root.errorMessage !== "" ? "warning" : (root.nipeActive ? "shield" : "security")
                 size: Theme.iconSize - 6
+                visible: !root.isActionRunning && !root.isManualRefreshing
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             StyledText {
                 text: {
-                    if (root.isLoading && root.statusText.endsWith("...")) return root.statusText;
-                    if (root.isLoading) return "Refreshing…";
+                    if (root.isActionRunning) return root.statusText;
                     if (root.errorMessage !== "") return "Nipe Error";
                     if (root.nipeActive) {
                         var t = root.ipAddress !== "Unknown" ? root.ipAddress : "Active";
@@ -334,28 +339,8 @@ PluginComponent {
                 }
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
-                color: root.nipeActive ? Theme.primary : Theme.surfaceVariantText
+                color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
                 anchors.verticalCenter: parent.verticalCenter
-            }
-
-            HoverHandler {
-                id: hPillHover
-            }
-
-            ToolTip {
-                visible: hPillHover.hovered
-                delay: 450
-                timeout: 5000
-                padding: Theme.spacingM
-                contentItem: StyledText {
-                    text: root.barTooltipText()
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceText
-                }
-                background: StyledRect {
-                    radius: Theme.cornerRadius
-                    color: Theme.surfaceContainerHigh
-                }
             }
         }
     }
@@ -368,51 +353,27 @@ PluginComponent {
             id: vPill
             spacing: Theme.spacingXS
 
-            BusyIndicator {
-                width: 12
-                height: 12
-                running: root.isLoading
+            DankSpinner {
+                size: Theme.iconSize - 8
+                running: root.isActionRunning || root.isManualRefreshing
                 visible: running
                 anchors.horizontalCenter: parent.horizontalCenter
-                contentItem: Spinner {
-                    width: 12
-                    height: 12
-                }
             }
 
             DankIcon {
                 name: root.errorMessage !== "" ? "warning" : (root.nipeActive ? "shield" : "security")
                 size: Theme.iconSize - 8
+                visible: !root.isActionRunning && !root.isManualRefreshing
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
                 anchors.horizontalCenter: parent.horizontalCenter
             }
 
             StyledText {
-                text: root.isLoading ? "…" : (root.nipeActive ? "ON" : "OFF")
+                text: root.isActionRunning ? "…" : (root.errorMessage !== "" ? "!" : (root.nipeActive ? "ON" : "OFF"))
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
-                color: root.nipeActive ? Theme.primary : Theme.surfaceVariantText
+                color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
                 anchors.horizontalCenter: parent.horizontalCenter
-            }
-
-            HoverHandler {
-                id: vPillHover
-            }
-
-            ToolTip {
-                visible: vPillHover.hovered
-                delay: 450
-                timeout: 5000
-                padding: Theme.spacingM
-                contentItem: StyledText {
-                    text: root.barTooltipText()
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceText
-                }
-                background: StyledRect {
-                    radius: Theme.cornerRadius
-                    color: Theme.surfaceContainerHigh
-                }
             }
         }
     }
@@ -432,6 +393,22 @@ PluginComponent {
             }
             showCloseButton: true
 
+            headerActions: Component {
+                Row {
+                    spacing: Theme.spacingXS
+
+                    DankActionButton {
+                        iconName: "refresh"
+                        iconColor: Theme.surfaceVariantText
+                        buttonSize: 28
+                        tooltipText: "Refresh status"
+                        tooltipSide: "bottom"
+                        enabled: !root.isActionRunning && !root.isManualRefreshing
+                        onClicked: root.refreshStatus(true)
+                    }
+                }
+            }
+
             Column {
                 width: parent.width
                 spacing: Theme.spacingM
@@ -439,18 +416,18 @@ PluginComponent {
                 // ---- Status Banner ----
                 StyledRect {
                     width: parent.width
-                    height: statusBannerColumn.implicitHeight + Theme.spacingL * 2
+                    height: statusBannerColumn.implicitHeight + Theme.spacingM * 2
                     radius: Theme.cornerRadius
-                    color: root.nipeActive ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16)
-                                          : (root.errorMessage !== "" ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15)
+                    color: root.nipeActive ? Theme.withAlpha(Theme.primary, 0.14)
+                                          : (root.errorMessage !== "" ? Theme.withAlpha(Theme.error, 0.14)
                                                                       : Theme.surfaceContainerHigh)
 
                     Rectangle {
                         width: parent.width
                         height: 3
-                        radius: 2
-                        visible: root.nipeActive
-                        color: Theme.primary
+                        radius: Theme.cornerRadiusSmall
+                        visible: root.nipeActive || root.errorMessage !== ""
+                        color: root.errorMessage !== "" ? Theme.error : Theme.primary
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
@@ -458,43 +435,44 @@ PluginComponent {
                     Column {
                         id: statusBannerColumn
                         anchors.fill: parent
-                        anchors.margins: Theme.spacingL
+                        anchors.margins: Theme.spacingM
                         spacing: Theme.spacingS
 
                         Row {
+                            id: statusHeaderRow
                             width: parent.width
                             spacing: Theme.spacingM
 
-                            BusyIndicator {
-                                width: 36
-                                height: 36
-                                running: root.isLoading
+                            DankSpinner {
+                                id: bannerSpinner
+                                size: 36
+                                running: root.isActionRunning
                                 visible: running
                                 anchors.verticalCenter: parent.verticalCenter
-                                contentItem: Spinner {
-                                    width: 30
-                                    height: 30
-                                }
                             }
 
                             DankIcon {
+                                id: bannerIcon
                                 name: root.nipeActive ? "verified_user" : (root.errorMessage !== "" ? "error" : "security")
                                 size: 36
-                                visible: !root.isLoading
+                                visible: !root.isActionRunning
                                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
                             Column {
+                                id: bannerTextCol
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - 150
-                                spacing: 2
+                                width: parent.width - 36 - Theme.spacingM - (liveChip.visible ? (liveChip.width + Theme.spacingM) : 0)
+                                spacing: Theme.spacingXS
 
                                 StyledText {
-                                    text: root.isLoading ? "Refreshing…" : (root.nipeActive ? "Tor Gateway Active" : (root.errorMessage !== "" ? "Attention Required" : "Tor Gateway Inactive"))
+                                    text: root.isActionRunning ? root.statusText : (root.nipeActive ? "Tor Gateway Active" : (root.errorMessage !== "" ? "Attention Required" : "Tor Gateway Inactive"))
                                     font.pixelSize: Theme.fontSizeLarge
                                     font.weight: Font.Bold
                                     color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceText)
+                                    elide: Text.ElideRight
+                                    width: parent.width
                                 }
 
                                 StyledText {
@@ -508,11 +486,12 @@ PluginComponent {
 
                             // Live status chip
                             StyledRect {
+                                id: liveChip
                                 width: chipRow.implicitWidth + Theme.spacingM * 2
                                 height: 24
-                                radius: 12
-                                visible: !root.isLoading && root.errorMessage === ""
-                                color: root.nipeActive ? Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.18) : Theme.surfaceContainer
+                                radius: height / 2
+                                visible: !root.isActionRunning && root.errorMessage === ""
+                                color: root.nipeActive ? Theme.withAlpha(Theme.success, 0.18) : Theme.surfaceContainer
                                 anchors.verticalCenter: parent.verticalCenter
 
                                 Row {
@@ -521,16 +500,16 @@ PluginComponent {
                                     spacing: Theme.spacingXS
 
                                     Rectangle {
-                                        width: 7
-                                        height: 7
-                                        radius: 3.5
+                                        width: 8
+                                        height: 8
+                                        radius: 4
                                         color: root.nipeActive ? Theme.success : Theme.surfaceVariantText
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
 
                                     StyledText {
                                         text: root.nipeActive ? "LIVE" : "IDLE"
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontSizeSmall - 2
                                         font.weight: Font.Bold
                                         color: root.nipeActive ? Theme.success : Theme.surfaceVariantText
                                         anchors.verticalCenter: parent.verticalCenter
@@ -550,11 +529,11 @@ PluginComponent {
                             Row {
                                 id: connRow
                                 anchors.fill: parent
-                                anchors.leftMargin: Theme.spacingM
-                                anchors.rightMargin: Theme.spacingS
+                                anchors.margins: Theme.spacingS
                                 spacing: Theme.spacingS
 
                                 DankIcon {
+                                    id: lanIcon
                                     name: "lan"
                                     size: Theme.iconSize - 2
                                     color: Theme.primary
@@ -563,12 +542,12 @@ PluginComponent {
 
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 120
-                                    spacing: 2
+                                    width: parent.width - lanIcon.width - copyBtn.width - connRow.spacing * 2
+                                    spacing: Theme.spacingXS
 
                                     StyledText {
                                         text: "Current External IP"
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontSizeSmall - 2
                                         color: Theme.surfaceVariantText
                                     }
 
@@ -592,8 +571,9 @@ PluginComponent {
                                 }
 
                                 DankButton {
-                                    text: "Copy"
-                                    iconName: "content_copy"
+                                    id: copyBtn
+                                    text: root.ipCopiedJustNow ? "Copied" : "Copy"
+                                    iconName: root.ipCopiedJustNow ? "check" : "content_copy"
                                     anchors.verticalCenter: parent.verticalCenter
                                     onClicked: root.copyIpToClipboard()
                                     enabled: root.ipAddress !== "Unknown" && root.ipAddress !== "N/A"
@@ -638,18 +618,21 @@ PluginComponent {
                         }
 
                         Grid {
+                            id: geoGrid
                             columns: 2
-                            columnSpacing: Theme.spacingL
-                            rowSpacing: Theme.spacingXS
+                            columnSpacing: Theme.spacingM
+                            rowSpacing: Theme.spacingS
                             width: parent.width
+                            property real colWidth: (width - columnSpacing) / 2
 
                             Column {
-                                spacing: 1
+                                width: geoGrid.colWidth
+                                spacing: Theme.spacingXS
                                 visible: root.countryCode !== ""
 
                                 StyledText {
                                     text: "Country"
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontSizeSmall - 2
                                     color: Theme.surfaceVariantText
                                 }
 
@@ -658,16 +641,19 @@ PluginComponent {
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: Theme.surfaceText
                                     font.weight: Font.Medium
+                                    width: parent.width
+                                    elide: Text.ElideRight
                                 }
                             }
 
                             Column {
-                                spacing: 1
+                                width: geoGrid.colWidth
+                                spacing: Theme.spacingXS
                                 visible: root.city !== "" || root.region !== ""
 
                                 StyledText {
                                     text: "City / Region"
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontSizeSmall - 2
                                     color: Theme.surfaceVariantText
                                 }
 
@@ -675,26 +661,29 @@ PluginComponent {
                                     text: [root.city, root.region].filter(Boolean).join(", ")
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: Theme.surfaceText
+                                    width: parent.width
+                                    elide: Text.ElideRight
                                 }
                             }
+                        }
 
-                            Column {
-                                spacing: 1
-                                visible: root.org !== ""
+                        Column {
+                            width: parent.width
+                            spacing: Theme.spacingXS
+                            visible: root.org !== ""
 
-                                StyledText {
-                                    text: "Network / ASN"
-                                    font.pixelSize: 10
-                                    color: Theme.surfaceVariantText
-                                }
+                            StyledText {
+                                text: "Network / ASN"
+                                font.pixelSize: Theme.fontSizeSmall - 2
+                                color: Theme.surfaceVariantText
+                            }
 
-                                StyledText {
-                                    text: root.org
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    color: Theme.surfaceVariantText
-                                    elide: Text.ElideRight
-                                    width: parent.width
-                                }
+                            StyledText {
+                                text: root.org
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                                elide: Text.ElideRight
+                                width: parent.width
                             }
                         }
                     }
@@ -719,8 +708,9 @@ PluginComponent {
                             spacing: Theme.spacingM
 
                             Column {
-                                width: parent.width - 160
-                                spacing: 2
+                                width: parent.width - leakBtn.width - Theme.spacingM
+                                spacing: Theme.spacingXS
+                                anchors.verticalCenter: parent.verticalCenter
 
                                 StyledText {
                                     text: "Leak Test"
@@ -739,76 +729,89 @@ PluginComponent {
                             }
 
                             DankButton {
+                                id: leakBtn
                                 text: root.leakTestState === "testing" ? "Testing…" : "Run Leak Test"
                                 iconName: root.leakTestState === "testing" ? "hourglass_top" : "fact_check"
                                 anchors.verticalCenter: parent.verticalCenter
                                 onClicked: root.runLeakTest()
-                                enabled: !root.isLoading && root.leakTestState !== "testing"
+                                enabled: !root.isActionRunning && root.leakTestState !== "testing"
                             }
                         }
 
-                        // Leak result row
-                        Row {
+                        // Leak result container
+                        StyledRect {
                             width: parent.width
+                            height: leakResultRow.implicitHeight + Theme.spacingS * 2
+                            radius: Theme.cornerRadiusSmall
                             visible: root.leakTestState !== "idle"
-                            spacing: Theme.spacingM
+                            color: root.leakTestState === "ok"
+                                   ? Theme.withAlpha(Theme.success, 0.12)
+                                   : (root.leakTestState === "leak"
+                                      ? Theme.withAlpha(Theme.error, 0.12)
+                                      : (root.leakTestState === "testing"
+                                         ? Theme.withAlpha(Theme.warning, 0.12)
+                                         : Theme.surfaceContainerHighest))
 
-                            BusyIndicator {
-                                width: 20
-                                height: 20
-                                running: root.leakTestState === "testing"
-                                visible: running
-                                anchors.verticalCenter: parent.verticalCenter
-                                contentItem: Spinner {
-                                    width: 18
-                                    height: 18
+                            Row {
+                                id: leakResultRow
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacingS
+                                spacing: Theme.spacingS
+
+                                DankSpinner {
+                                    id: leakSpinner
+                                    size: 20
+                                    running: root.leakTestState === "testing"
+                                    visible: running
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
-                            }
 
-                            DankIcon {
-                                name: {
-                                    if (root.leakTestState === "ok") return "verified_user";
-                                    if (root.leakTestState === "leak") return "gpp_bad";
-                                    if (root.leakTestState === "error") return "report";
-                                    return "utilities";
-                                }
-                                size: 18
-                                visible: root.leakTestState !== "testing"
-                                color: root.leakStateColor()
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Column {
-                                width: parent.width - 40
-                                spacing: 2
-                                anchors.verticalCenter: parent.verticalCenter
-
-                                StyledText {
-                                    text: root.leakStateLabel()
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    font.weight: Font.Medium
+                                DankIcon {
+                                    id: leakIcon
+                                    name: {
+                                        if (root.leakTestState === "ok") return "verified_user";
+                                        if (root.leakTestState === "leak") return "gpp_bad";
+                                        if (root.leakTestState === "error") return "report";
+                                        return "utilities";
+                                    }
+                                    size: 20
+                                    visible: root.leakTestState !== "testing"
                                     color: root.leakStateColor()
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
 
-                                StyledText {
-                                    visible: (root.leakTestState === "ok" || root.leakTestState === "leak") && root.leakExitIp !== ""
-                                    text: "Verified exit node: " + root.leakExitIp +
-                                          (root.leakExitCountryCode !== "" ? " (" + root.flagEmoji(root.leakExitCountryCode) + " " + (root.leakExitCountry || root.leakExitCountryCode) + ")" : "")
-                                    font.pixelSize: Theme.fontSizeSmall - 2
-                                    color: Theme.surfaceVariantText
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
-                                }
+                                Column {
+                                    width: parent.width - 20 - Theme.spacingS
+                                    spacing: Theme.spacingXS
+                                    anchors.verticalCenter: parent.verticalCenter
 
-                                StyledText {
-                                    visible: root.leakTestState === "error" && root.leakTestError !== ""
-                                    text: root.leakTestError
-                                    font.pixelSize: Theme.fontSizeSmall - 2
-                                    color: Theme.error
-                                    width: parent.width
-                                    wrapMode: Text.WordWrap
+                                    StyledText {
+                                        text: root.leakStateLabel()
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.weight: Font.Medium
+                                        color: root.leakStateColor()
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    StyledText {
+                                        visible: (root.leakTestState === "ok" || root.leakTestState === "leak") && root.leakExitIp !== ""
+                                        text: "Verified exit node: " + root.leakExitIp +
+                                              (root.leakExitCountryCode !== "" ? " (" + root.flagEmoji(root.leakExitCountryCode) + " " + (root.leakExitCountry || root.leakExitCountryCode) + ")" : "")
+                                        font.pixelSize: Theme.fontSizeSmall - 2
+                                        color: Theme.surfaceVariantText
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                    }
+
+                                    StyledText {
+                                        visible: root.leakTestState === "error" && root.leakTestError !== ""
+                                        text: root.leakTestError
+                                        font.pixelSize: Theme.fontSizeSmall - 2
+                                        color: Theme.error
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                    }
                                 }
                             }
                         }
@@ -821,13 +824,13 @@ PluginComponent {
                     height: errorColumn.implicitHeight + Theme.spacingM * 2
                     radius: Theme.cornerRadius
                     visible: root.errorMessage !== ""
-                    color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15)
+                    color: Theme.withAlpha(Theme.error, 0.14)
 
                     Column {
                         id: errorColumn
                         anchors.fill: parent
                         anchors.margins: Theme.spacingM
-                        spacing: Theme.spacingXS
+                        spacing: Theme.spacingS
 
                         Row {
                             spacing: Theme.spacingS
@@ -877,26 +880,26 @@ PluginComponent {
                         property real btnWidth: (width - spacing * 2) / 3
 
                         DankButton {
-                            text: root.isLoading && root.statusText === "Starting..." ? "Starting…" : "Start"
+                            text: root.isActionRunning && root.statusText === "Starting..." ? "Starting…" : "Start"
                             iconName: "play_arrow"
                             width: actionRow.btnWidth
-                            enabled: !root.isLoading && !root.nipeActive
+                            enabled: !root.isActionRunning && !root.nipeActive
                             onClicked: root.executeControl("start")
                         }
 
                         DankButton {
-                            text: root.isLoading && root.statusText === "Stopping..." ? "Stopping…" : "Stop"
+                            text: root.isActionRunning && root.statusText === "Stopping..." ? "Stopping…" : "Stop"
                             iconName: "stop"
                             width: actionRow.btnWidth
-                            enabled: !root.isLoading && root.nipeActive
+                            enabled: !root.isActionRunning && root.nipeActive
                             onClicked: root.executeControl("stop")
                         }
 
                         DankButton {
-                            text: root.isLoading && root.statusText === "Restarting..." ? "Restarting…" : "Restart"
+                            text: root.isActionRunning && root.statusText === "Restarting..." ? "Restarting…" : "Restart"
                             iconName: "refresh"
                             width: actionRow.btnWidth
-                            enabled: !root.isLoading
+                            enabled: !root.isActionRunning
                             onClicked: root.executeControl("restart")
                         }
                     }
@@ -904,10 +907,12 @@ PluginComponent {
 
                 // ---- Footer: dir path + refresh ----
                 Row {
+                    id: footerRow
                     width: parent.width
                     spacing: Theme.spacingS
 
                     DankIcon {
+                        id: folderIcon
                         name: "folder"
                         size: Theme.iconSize - 6
                         color: root.nipeDir ? Theme.primary : Theme.surfaceVariantText
@@ -920,19 +925,23 @@ PluginComponent {
                         color: Theme.surfaceVariantText
                         anchors.verticalCenter: parent.verticalCenter
                         elide: Text.ElideMiddle
-                        width: parent.width - 110
+                        width: parent.width - folderIcon.width - refreshBtn.width - (footerSpinner.visible ? (footerSpinner.width + footerRow.spacing) : 0) - footerRow.spacing * 2
                     }
 
-                    Item {
-                        width: Theme.spacingS
-                        height: 1
+                    DankSpinner {
+                        id: footerSpinner
+                        size: 14
+                        running: root.isManualRefreshing
+                        visible: running
+                        anchors.verticalCenter: parent.verticalCenter
                     }
 
                     DankButton {
+                        id: refreshBtn
                         iconName: "refresh"
                         anchors.verticalCenter: parent.verticalCenter
-                        onClicked: root.refreshStatus()
-                        enabled: !root.isLoading
+                        onClicked: root.refreshStatus(true)
+                        enabled: !root.isActionRunning && !root.isManualRefreshing
                     }
                 }
             }
