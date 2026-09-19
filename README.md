@@ -11,7 +11,6 @@
   - One-click **Start**, **Stop**, and **Restart** controls.
   - Live external IP display with a **Copy IP** button (supports `wl-copy` & `xclip`).
   - **Country detection**: Showing exit node location with flag/code.
-  - **IP Leak Test** button to verify no IP leaks when Tor is active.
   - Connection status badge and active routing indicator.
   - Detailed error reporting (sudoers warnings, missing dependencies, unreadable status).
 - **Status Change Notifications**: Desktop notifications when Nipe starts/stops.
@@ -140,9 +139,6 @@ You can test the helper script from your terminal:
 
 # Output JSON status
 ~/.local/bin/nipe-widget.sh json-status
-
-# Run leak test (requires Nipe to be active)
-~/.local/bin/nipe-widget.sh leak-test
 ```
 
 Expected output of `json-status`:
@@ -185,14 +181,12 @@ The helper script can also be executed directly from the terminal for debugging:
 | `nipe-widget.sh status`      | Prints raw Nipe status output                 |
 | `nipe-widget.sh json-status` | Returns structured JSON status for UI widgets |
 | `nipe-widget.sh check-deps`  | Verifies required Perl + system modules       |
-| `nipe-widget.sh leak-test`   | Runs IP leak test (requires active Nipe)  |
 | `nipe-widget.sh path`        | Displays detected Nipe installation path      |
 
 Optionally pass a custom IP API base URL as a second argument, e.g.:
 
 ```bash
 ~/.local/bin/nipe-widget.sh json-status https://api.example.com
-~/.local/bin/nipe-widget.sh leak-test https://api.example.com
 ```
 
 ---
@@ -205,8 +199,6 @@ Optionally pass a custom IP API base URL as a second argument, e.g.:
   Run `nipe-widget.sh check-deps` in terminal to identify missing Perl packages.
 - **Nipe fails to start**:
   Verify the Tor service is running: `sudo systemctl status tor`.
-- **IP leak test shows false positives**:
-  The IP leak check compares your live exit IP against the Tor gateway IP (via your IP API). If the API is blocked or unreachable, the test may report a leak or an error.
 - **Country not showing**:
   Ensure `curl` and `jq` are installed. Check IP API endpoint in settings (default: ipinfo.io).
 - **Custom Directory**:
