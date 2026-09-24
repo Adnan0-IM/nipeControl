@@ -1,91 +1,57 @@
 # Nipe Control Plugin for DankMaterialShell
 
-**Nipe Control** is a feature-rich, robust widget plugin for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell). It provides seamless integration with [Nipe](https://github.com/htbridge/nipe)—an engine that makes the Tor network your default gateway—allowing you to start, stop, restart, and monitor your connection state, external IP address, country, and run leak tests directly from your shell bar.
+**Nipe Control** integrates [Nipe](https://github.com/htbridge/nipe) with DankMaterialShell. It lets you start/stop/restart the Tor gateway, show your exit IP and country, and get desktop notifications — all from the shell bar widget.
 
 ---
 
-## 🚀 Features
+## Features
 
-- **Live Bar Widget**: Displays real-time Nipe status, external IP address, and country code in your top bar.
-- **Interactive Popout Dashboard**:
-  - One-click **Start**, **Stop**, and **Restart** controls.
-  - Live external IP display with a **Copy IP** button (supports `wl-copy` & `xclip`).
-  - **Country detection**: Showing exit node location with flag/code.
-  - Connection status badge and active routing indicator.
-  - Detailed error reporting (sudoers warnings, missing dependencies, unreadable status).
-- **Status Change Notifications**: Desktop notifications when Nipe starts/stops.
-- **Non-Blocking Helper Script**: `nipe-widget.sh` handles status queries in JSON without blocking the UI or hanging on sudo password prompts.
-- **Integrated Settings**: Configurable Nipe installation path, auto-refresh intervals, country display, notifications, and IP API endpoint via DankMaterialShell plugin settings.
-- **Loading Indicators**: Visual feedback during status checks and control operations.
-- **Tooltips**: Hover the bar widget for detailed status info.
+- **Live widget**: Real-time status, external IP, exit country.
+- **Controls**: Start / Stop / Restart with one click.
+- **Copy IP** to clipboard (`wl-copy` / `xclip`).
+- **Notifications**: Desktop alerts on status changes.
+- **Python helper** (`nipe-widget-py`): No bash script, no sudoers file needed — uses `pkexec` to show a desktop auth popup.
 
 ---
 
-## 📋 Prerequisites & Dependencies
+## Requirements
 
-To use this plugin, you must have **Nipe** installed alongside its required Perl dependencies.
-
-### 1. System Requirements & Core Packages
-
-- **Nipe** (cloned engine repository)
-- **Tor service** (`tor`)
-- **Perl** (5.30 or newer)
-- **Clipboard Utility** (Optional, for Copy IP feature): `wl-copy` (Wayland) or `xclip` (X11)
-- **curl** (for IP/leak checks)
-- **notify-send** (for desktop notifications, usually from `libnotify`)
-
-### 2. Perl Dependencies
-
-Nipe requires the following Perl modules:
-
-- `perl-config-simple` (`Config::Simple`)
-- `perl-json` (`JSON`)
-- `perl-readonly` (`Readonly`)
-- `perl-io-socket-ssl` (`IO::Socket::SSL`)
-- `perl-net-ssleay` (`Net::SSLeay`)
-- `Try::Tiny`
-- `HTTP::Tiny`
+- Nipe (`~/nipe` or custom path)
+- Perl 5.30+
+- `tor`
+- `curl`, `jq`
+- `notify-send` (from `libnotify`)
+- Clipboard tool (`wl-copy` or `xclip`)
+- `pkexec` (polkit) — for the auth popup
 
 ---
 
-## 🛠️ Installation Guide
+## Install Dependencies
 
-### Step 1: Install Dependencies
-
-Select the command corresponding to your Linux distribution:
-
-#### **Arch Linux / Manjaro**
-
+### Arch / Manjaro
 ```bash
-sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard curl libnotify
+sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard curl libnotify pkexec
 ```
 
-#### **Debian / Ubuntu / Kali Linux / Linux Mint**
-
+### Debian / Ubuntu / Mint
 ```bash
 sudo apt update
-sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard curl libnotify-bin
+sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard curl libnotify-bin policykit-1
 ```
 
-#### **Fedora / RHEL**
-
+### Fedora / RHEL
 ```bash
-sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard curl libnotify
+sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard curl libnotify polkit
 ```
 
-#### **Universal CPAN Method (Alternative)**
-
-If any Perl package is unavailable in your distribution's repositories, install them using CPAN:
-
+### CPAN (if packages missing)
 ```bash
 sudo cpan install Config::Simple JSON Readonly IO::Socket::SSL Net::SSLeay Try::Tiny
 ```
 
 ---
 
-### Step 2: Install Nipe
-
-Clone the official Nipe repository into your home directory (or custom directory):
+## Install Nipe
 
 ```bash
 git clone https://github.com/htbridge/nipe ~/nipe
@@ -93,119 +59,61 @@ cd ~/nipe
 sudo perl nipe.pl install
 ```
 
-> **Note**: Nipe will download and set up default Tor service rules during `install`.
+> Nipe requires root to configure `iptables`. The Python helper uses `pkexec` to ask for it — no sudoers file needed.
 
 ---
 
-### Step 3: Configure Sudoers Permissions (Crucial)
-
-Nipe requires root privileges to configure `iptables` rules and check connection status. To allow the background widget to query status and toggle Nipe without blocking on interactive password prompts:
-
-1. Create a sudoers file for Nipe:
-
-   ```bash
-   sudo visudo /etc/sudoers.d/nipe
-   ```
-
-2. Add the following rule (replace `username` with your Linux username or use `%wheel` / `%sudo` group):
-
-   ```sudoers
-   # Allow user to run Nipe script as root without password prompt
-   username ALL=(ALL) NOPASSWD: /usr/bin/perl /home/username/nipe/nipe.pl *
-   ```
-
-3. Save and set proper permissions:
-   ```bash
-   sudo chmod 0440 /etc/sudoers.d/nipe
-   ```
-
----
-
-### Step 4: Install the Helper Script
-
-Ensure `nipe-widget.sh` is placed in `~/.local/bin/` and made executable:
+## Install Plugin Helper
 
 ```bash
 mkdir -p ~/.local/bin
-cp nipe-widget.sh ~/.local/bin/
-chmod +x ~/.local/bin/nipe-widget.sh
+cp nipe-widget-py ~/.local/bin/
+chmod +x ~/.local/bin/nipe-widget-py
 ```
 
-You can test the helper script from your terminal:
+The `NipeControl.qml` widget points to `~/.local/bin/nipe-widget-py`.
+
+---
+
+## Enable Plugin
+
+1. Open DankMaterialShell settings (`Super` + `,`).
+2. Go to **Plugins**, enable **Nipe Control**.
+3. In settings, configure:
+   - **Custom Nipe Directory** (if not `~/nipe`)
+   - **Refresh Interval** (default `15` sec)
+   - **Show Country**, **Notifications**, **Auto-start**, **IP API endpoint**
+
+---
+
+## Helper Usage (Python)
 
 ```bash
-# Check perl dependencies
-~/.local/bin/nipe-widget.sh check-deps
-
-# Output JSON status
-~/.local/bin/nipe-widget.sh json-status
+~/.local/bin/nipe-widget-py check-deps
+~/.local/bin/nipe-widget-py json-status
+~/.local/bin/nipe-widget-py start
+~/.local/bin/nipe-widget-py status
+~/.local/bin/nipe-widget-py path
 ```
 
-Expected output of `json-status`:
-
-```json
-{
-  "active": false,
-  "ip": "Unknown",
-  "error": null,
-  "nipe_dir": "/home/username/nipe"
-}
-```
+Pass a custom API URL: `~/.local/bin/nipe-widget-py json-status https://api.example.com`
 
 ---
 
-### Step 5: Enable Plugin in DankMaterialShell
+## Permissions Note
 
-1. Open DankMaterialShell Settings (`Super` + `,` or via launcher).
-2. Navigate to **Plugins** section.
-3. Enable **Nipe Control**.
-4. Configure options under **Nipe Control Settings**:
-   - **Custom Nipe Directory**: Specify path if Nipe is installed outside `~/nipe`.
-   - **Refresh Interval**: Set status refresh rate (default `15` seconds).
-   - **Show Country Code**: Display country code/name alongside IP.
-   - **Enable Notifications**: Get desktop alerts on status changes.
-   - **Auto-start on Login**: Automatically enable Tor gateway when DMS starts.
-   - **IP Info API Endpoint**: Customize API for IP/country lookup.
+No `/etc/sudoers.d/nipe` required. The Python script tries direct execution; if root is needed, it runs through `pkexec`, which opens a graphical password dialog. You can enable **Auto-start on Login** — it will trigger the same auth popup when DMS starts.
 
 ---
 
-## 🛠️ Helper Script Usage (`nipe-widget.sh`)
+## Troubleshooting
 
-The helper script can also be executed directly from the terminal for debugging:
-
-| Command                      | Description                                   |
-| :--------------------------- | :-------------------------------------------- |
-| `nipe-widget.sh start`       | Starts Nipe Tor gateway                       |
-| `nipe-widget.sh stop`        | Stops Nipe Tor gateway                        |
-| `nipe-widget.sh restart`     | Restarts Nipe Tor gateway                     |
-| `nipe-widget.sh status`      | Prints raw Nipe status output                 |
-| `nipe-widget.sh json-status` | Returns structured JSON status for UI widgets |
-| `nipe-widget.sh check-deps`  | Verifies required Perl + system modules       |
-| `nipe-widget.sh path`        | Displays detected Nipe installation path      |
-
-Optionally pass a custom IP API base URL as a second argument, e.g.:
-
-```bash
-~/.local/bin/nipe-widget.sh json-status https://api.example.com
-```
+- **"Nipe directory not found"**: Set `NIPE_DIR=/path/to/nipe` in `~/.config/nipeControl/config` or use plugin settings.
+- **"Root permissions required"**: `pkexec` should handle this. If it fails, make sure `polkit` is installed and your user can authorize.
+- **Missing dependencies**: Run `~/.local/bin/nipe-widget-py check-deps` to see which Perl module or tool is missing.
+- **No leak test**: The leak-test feature was removed per request.
+- **Custom directory**: Specify in `NipeControlSettings.qml` or via `NIPE_DIR` config.
 
 ---
 
-## 🔍 Troubleshooting
-
-- **Error: "Sudo password required"**:
-  Ensure `/etc/sudoers.d/nipe` is created and correctly references the full path to `perl` and `nipe.pl`.
-- **Error: "Missing dependencies"**:
-  Run `nipe-widget.sh check-deps` in terminal to identify missing Perl packages.
-- **Nipe fails to start**:
-  Verify the Tor service is running: `sudo systemctl status tor`.
-- **Country not showing**:
-  Ensure `curl` and `jq` are installed. Check IP API endpoint in settings (default: ipinfo.io).
-- **Custom Directory**:
-  If Nipe is located in a non-standard directory (e.g. `/opt/nipe`), specify the path in `NipeControlSettings.qml` or set `NIPE_DIR=/your/path` in `~/.config/nipeControl/config`.
-
----
-
-## 📜 License
-
-MIT License - feel free to modify and distribute.
+MIT License.

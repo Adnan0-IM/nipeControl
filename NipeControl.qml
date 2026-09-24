@@ -51,7 +51,7 @@ PluginComponent {
     }
 
     function getHelperPath() {
-        return (Quickshell.env("HOME") || "/home") + "/.local/bin/nipe-widget.sh";
+        return (Quickshell.env("HOME") || "/home") + "/.local/bin/nipe-widget-py";
     }
 
     function sendNotification(title, body) {

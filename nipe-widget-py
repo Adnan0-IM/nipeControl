@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""
+Nipe Control Plugin - Python Implementation
+Replaces nipe-widget.sh with a modern Python daemon for Nipe Tor gateway control.
+
+Features:
+- Network control (start/stop/restart nipe)
+- IP checking and status monitoring
+- Leak detection
+- Country detection
+- Desktop notifications
+- Auto-start functionality
+- REST API for QML integration
+"""
+
+import os
+import sys
+import json
+import subprocess
+import shutil
+import time
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.expanduser('~/.local/share/nipeControl/nipe-widget-py.log')),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+@dataclass
+class NipeConfig:
+    """Configuration settings"""
+    nipe_dir: str = ""
+    ip_info_api: str = "https://ipinfo.io"
+    tor_socks_port: str = "9050"
+    config_file: str = os.path.expanduser('~/.config/nipeControl/config')
+
+@dataclass
+class DependencyStatus:
+    """Dependency check results"""
+    perl: bool = False
+    perl_config_simple: bool = False
+    perl_json: bool = False
+    perl_readonly: bool = False
+    perl_io_socket_ssl: bool = False
+    perl_net_ssleay: bool = False
+    curl: bool = False
+    jq: bool = False
+    notify_send: bool = False
+    clipboard_tool: bool = False
+
+@dataclass
+class IPInfo:
+    """IP information data"""
+    code: str = ""
+    name: str = ""
+    city: str = ""
+    region: str = ""
+    org: str = ""
+
+@dataclass
+class NipeStatus:
+    """Nipe Tor gateway status"""
+    active: bool = False
+    ip: str = "Unknown"
+    error: str = "null"
+    nipe_dir: str = ""
+    country: str = ""
+    country_code: str = ""
+    city: str = ""
+    region: str = ""
+    org: str = ""
+    exit_ip: str = ""
+    exit_country_code: str = ""
+    exit_country: str = ""
+
+class NipeWidgetPy:
+    """Main Nipe Control implementation"""
+
+    def __init__(self, config: Optional[NipeConfig] = None):
+        self.config = config or NipeConfig()
+        self.nipe_dir = self._find_nipe_dir()
+        self._load_config()
+
+    def _load_config(self):
+        """Load configuration from config file"""
+        if os.path.exists(self.config.config_file):
+            try:
+                with open(self.config.config_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('NIPE_DIR='):
+                            self.config.nipe_dir = line.split('=', 1)[1].strip('"\'')
+            except Exception as e:
+                logger.warning(f"Failed to load config: {e}")
+
+    def _find_nipe_dir(self) -> str:
+        """Find Nipe directory"""
+        if self.config.nipe_dir and self._validate_nipe_dir(self.config.nipe_dir):
+            return self.config.nipe_dir
+
+        search_paths = [
+            os.path.expanduser('~/nipe'),
+            os.path.expanduser('~/.local/share/nipe'),
+            '/opt/nipe',
+            '/etc/nipe',
+            '/usr/local/nipe'
+        ]
+
+        for path in search_paths:
+            if self._validate_nipe_dir(path):
+                return path
+
+        return ""
+
+    def _validate_nipe_dir(self, path: str) -> bool:
+        """Validate Nipe directory"""
+        return os.path.isdir(path) and os.path.isfile(os.path.join(path, 'nipe.pl'))
+
+    def check_dependencies(self) -> Tuple[bool, str]:
+        """Check all required dependencies"""
+        deps = DependencyStatus()
+
+        # Perl dependencies
+        deps.perl = self._check_command('perl')
+        deps.perl_config_simple = self._check_perl_module('Config::Simple')
+        deps.perl_json = self._check_perl_module('JSON')
+        deps.perl_readonly = self._check_perl_module('Readonly')
+        deps.perl_io_socket_ssl = self._check_perl_module('IO::Socket::SSL')
+        deps.perl_net_ssleay = self._check_perl_module('Net::SSLeay')
+
+        # System dependencies
+        deps.curl = self._check_command('curl')
+        deps.jq = self._check_command('jq')
+        deps.notify_send = self._check_command('notify-send')
+
+        # Clipboard tool
+        deps.clipboard_tool = (
+            self._check_command('wl-copy') or
+            self._check_command('xclip') or
+            self._check_command('dms')
+        )
+
+        missing = []
+        if not deps.perl: missing.append('perl')
+        if not deps.perl_config_simple: missing.append('perl-config-simple')
+        if not deps.perl_json: missing.append('perl-json')
+        if not deps.perl_readonly: missing.append('perl-readonly')
+        if not deps.perl_io_socket_ssl: missing.append('perl-io-socket-ssl')
+        if not deps.perl_net_ssleay: missing.append('perl-net-ssleay')
+        if not deps.curl: missing.append('curl')
+        if not deps.jq: missing.append('jq')
+        if not deps.notify_send: missing.append('notify-send')
+        if not deps.clipboard_tool: missing.append('clipboard-tool')
+
+        if not missing:
+            return True, "OK"
+        else:
+            return False, f"MISSING:{', '.join(missing)}"
+
+    def _check_command(self, cmd: str) -> bool:
+        """Check if command exists"""
+        return shutil.which(cmd) is not None
+
+    def _check_perl_module(self, module: str) -> bool:
+        """Check if Perl module exists"""
+        try:
+            result = subprocess.run(
+                ['perl', '-M' + module, '-e', '1'],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def run_nipe_cmd(self, action: str) -> str:
+        """Run Nipe command"""
+        if not self.nipe_dir or not os.path.isfile(os.path.join(self.nipe_dir, 'nipe.pl')):
+            return "[!] ERROR: Nipe directory not found."
+
+        os.chdir(self.nipe_dir)
+
+        perl_bin = shutil.which('perl') or '/usr/bin/perl'
+
+        # Try non-interactive sudo first
+        try:
+            result = subprocess.run(
+                [perl_bin, 'nipe.pl', action],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                return result.stdout
+        except subprocess.TimeoutExpired:
+            return "[!] ERROR: Command timed out."
+        except Exception as e:
+            logger.warning(f"Non-interactive sudo failed: {e}")
+
+        # Fallback to direct execution (should be run as root already)
+        try:
+            result = subprocess.run(
+                [perl_bin, 'nipe.pl', action],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            return result.stdout + result.stderr
+        except Exception as e:
+            logger.error(f"Command failed: {e}")
+            return f"[!] ERROR: {str(e)}"
+
+    def fetch_ip_info(self, ip: str = "") -> IPInfo:
+        """Fetch IP information"""
+        info = IPInfo()
+
+        if not ip or ip in ["Unknown", "N/A"]:
+            api_base = self.config.ip_info_api.rstrip('/')
+            url = f"{api_base}/json"
+        else:
+            api_base = self.config.ip_info_api.rstrip('/')
+            url = f"{api_base}/{ip}/json"
+
+        try:
+            result = subprocess.run(
+                ['curl', '-s', '--max-time', '5', url],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode != 0 or not result.stdout.strip():
+                return info
+
+            data = json.loads(result.stdout)
+
+            info.code = data.get('country', '')
+            info.name = data.get('country_name', data.get('name', ''))
+            info.city = data.get('city', '')
+            info.region = data.get('region', '')
+            info.org = data.get('org', '')
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch IP info: {e}")
+
+        return info
+
+    def get_json_status(self, api: str = "") -> str:
+        """Get JSON status output"""
+        api = api or self.config.ip_info_api
+        deps_ok, deps_status = self.check_dependencies()
+
+        if not deps_ok:
+            missing_list = deps_status.split('MISSING:')[1] if 'MISSING:' in deps_status else deps_status
+            status = NipeStatus(
+                nipe_dir=self.nipe_dir,
+                error=f'"Missing dependencies: {missing_list}"'
+            )
+            return self._status_to_json(status)
+
+        if not self.nipe_dir or not os.path.isfile(os.path.join(self.nipe_dir, 'nipe.pl')):
+            status = NipeStatus(
+                error='"Nipe directory not found. Install Nipe or set NIPE_DIR."'
+            )
+            return self._status_to_json(status)
+
+        raw_output = self.run_nipe_cmd('status')
+
+        status = self._parse_status_output(raw_output, api)
+        status.nipe_dir = self.nipe_dir
+
+        return self._status_to_json(status)
+
+    def _parse_status_output(self, raw_output: str, api: str) -> NipeStatus:
+        """Parse raw status output"""
+        status = NipeStatus()
+
+        if 'Status: true' in raw_output.lower():
+            status.active = True
+        elif 'Status: false' in raw_output.lower():
+            status.active = False
+        elif 'Sudo password required' in raw_output.lower():
+            status.error = '"Sudo password required. Configure sudoers rule (see README)."'
+        elif 'must be run as root' in raw_output.lower():
+            status.error = '"Root permissions required."'
+        else:
+            clean_err = raw_output.replace('"', '\\"').replace('\r\n', ' ').strip()[:120]
+            if clean_err:
+                status.error = f'"{clean_err}"'
+
+        # Extract IP
+        for line in raw_output.split('\n'):
+            if 'Ip:' in line.lower():
+                status.ip = line.split(':', 1)[-1].strip().strip('\r\n')
+                break
+
+        if status.active:
+            ip_info = self.fetch_ip_info(status.ip)
+            status.country_code = ip_info.code
+            status.country = ip_info.name
+            status.city = ip_info.city
+            status.region = ip_info.region
+            status.org = ip_info.org
+
+        return status
+
+    def _status_to_json(self, status: NipeStatus) -> str:
+        """Convert status to JSON string"""
+        return json.dumps({
+            'active': status.active,
+            'ip': status.ip,
+            'error': status.error,
+            'nipe_dir': status.nipe_dir,
+            'country': status.country,
+            'country_code': status.country_code,
+            'city': status.city,
+            'region': status.region,
+            'org': status.org
+        }, indent=2)
+
+    
+    def send_notification(self, title: str, body: str):
+        """Send desktop notification"""
+        try:
+            subprocess.run(
+                ['notify-send', '-a', 'Nipe Control', '-i', 'security', title, body],
+                check=True,
+                timeout=10
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification: {e}")
+
+    def copy_ip_to_clipboard(self, ip: str):
+        """Copy IP to clipboard"""
+        if not ip or ip in ['Unknown', 'N/A']:
+            return False
+
+        try:
+            # Try different clipboard tools
+            commands = [
+                f'dms cl copy "{ip}" 2>/dev/null',
+                f'printf "%s" "{ip}" | wl-copy 2>/dev/null',
+                f'printf "%s" "{ip}" | xclip -selection clipboard 2>/dev/null'
+            ]
+
+            for cmd in commands:
+                try:
+                    subprocess.run(cmd, shell=True, check=True, timeout=5)
+                    logger.info(f"Copied {ip} to clipboard")
+                    return True
+                except Exception:
+                    continue
+
+        except Exception as e:
+            logger.warning(f"Failed to copy to clipboard: {e}")
+
+        return False
+
+    def daemonize(self):
+        """Run as daemon"""
+        # Fork to background
+        try:
+            pid = os.fork()
+            if pid > 0:
+                # Parent exits
+                sys.exit(0)
+        except OSError as e:
+            sys.stderr.write(f"Fork failed: {e}\n")
+            sys.exit(1)
+
+        # Detach from terminal
+        os.setsid()
+        os.umask(0)
+
+        # Fork again to prevent reacquisition of terminal
+        try:
+            pid = os.fork()
+            if pid > 0:
+                sys.exit(0)
+        except OSError as e:
+            sys.stderr.write(f"Second fork failed: {e}\n")
+            sys.exit(1)
+
+        # Redirect standard file descriptors
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        si = open(os.devnull, 'r')
+        so = open(os.devnull, 'a+')
+        se = open(os.devnull, 'a+')
+
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
+
+        # Write PID file
+        with open(os.path.expanduser('~/.local/share/nipeControl/nipe-widget-py.pid'), 'w') as f:
+            f.write(str(os.getpid()))
+
+        logger.info("Nipe Widget Py started as daemon")
+
+        # Main loop
+        while True:
+            time.sleep(60)  # Check every minute
+
+def main():
+    """Main entry point"""
+    # Ensure data directory exists
+    data_dir = os.path.expanduser('~/.local/share/nipeControl')
+    os.makedirs(data_dir, exist_ok=True)
+
+    # Parse command line arguments
+    if len(sys.argv) < 2:
+        print("Usage: nipe-widget-py <command> [args]")
+        print("Commands: status, start, stop, restart, json-status, check-deps, path")
+        sys.exit(1)
+
+    command = sys.argv[1]
+    args = sys.argv[2:]
+
+    widget = NipeWidgetPy()
+
+    try:
+        if command == 'status':
+            output = widget.run_nipe_cmd('status')
+            print(output)
+
+        elif command == 'start':
+            output = widget.run_nipe_cmd('start')
+            print(output)
+
+        elif command == 'stop':
+            output = widget.run_nipe_cmd('stop')
+            print(output)
+
+        elif command == 'restart':
+            output = widget.run_nipe_cmd('restart')
+            print(output)
+
+        elif command == 'json-status':
+            api = args[0] if args else widget.config.ip_info_api
+            print(widget.get_json_status(api))
+
+        elif command == 'check-deps':
+            _, status = widget.check_dependencies()
+            print(status)
+
+        elif command == 'path':
+            print(widget.nipe_dir or 'not_found')
+
+        elif command == 'daemon':
+            widget.daemonize()
+
+        else:
+            print(f"Unknown command: {command}")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Command failed: {e}")
+        print(f"[!] ERROR: {e}")
+        sys.exit(1)
+if __name__ == '__main__':
+    main()

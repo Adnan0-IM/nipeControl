@@ -23,7 +23,7 @@ PluginSettings {
 
         StyledText {
             width: parent.width
-            text: "Manage the Tor gateway integration: routing status, exit country, leak testing, notifications and startup behavior."
+            text: "Manage the Tor gateway integration: routing status, exit country, notifications and startup behavior."
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.surfaceVariantText
             wrapMode: Text.WordWrap
@@ -83,7 +83,7 @@ PluginSettings {
             StringSetting {
                 settingKey: "ipInfoApiEndpoint"
                 label: "IP Info API Endpoint"
-                description: "Base URL used for IP, country and leak verification (expects ipinfo.io-like JSON and /ip endpoint)"
+                description: "Base URL used for IP and country verification (expects ipinfo.io-like JSON)"
                 placeholder: "https://ipinfo.io"
                 defaultValue: "https://ipinfo.io"
             }
@@ -141,7 +141,7 @@ PluginSettings {
             ToggleSetting {
                 settingKey: "autoStart"
                 label: "Auto-start on Login"
-                description: "Automatically activate the Tor gateway when the shell starts (requires passwordless sudoers rule)"
+                description: "Automatically activate the Tor gateway when the shell starts (requires sudo access)"
                 defaultValue: false
             }
         }
@@ -265,7 +265,7 @@ PluginSettings {
             }
 
             StyledText {
-                text: "• Leak Test requires an active Nipe connection and internet access to ipinfo.io (or your custom endpoint).\n\n• If the bar shows 'Nipe Error', run `nipe-widget.sh check-deps` from a terminal to find missing dependencies.\n\n• Country detection falls back gracefully: if the IP API is unreachable, only the IP address is shown.\n\n• The DMS plugin must be installed at ~/.local/bin/nipe-widget.sh for auto-start to work.\n\n• Auto-start only activates once per session to avoid infinite retry loops if Nipe fails to start.\n\n• Use a custom IP API endpoint if ipinfo.io is blocked or rate-limited in your network."
+                text: "• Country detection falls back gracefully: if the IP API is unreachable, only the IP address is shown.\n\n• The DMS plugin helper script must be installed at ~/.local/bin/nipe-widget-py for operation.\n\n• Auto-start only activates once per session to avoid infinite retry loops if Nipe fails to start.\n\n• Use a custom IP API endpoint if ipinfo.io is blocked or rate-limited in your network."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
@@ -310,7 +310,7 @@ PluginSettings {
             }
 
             StyledText {
-                text: "Country detection, leak tests and notifications require:\n\n• curl  — HTTP lookups and leak checks\n• jq    — JSON parsing\n• notify-send (libnotify) — desktop notifications\n\nThese are checked automatically by the helper script on every status refresh."
+                text: "Country detection and notifications require:\n\n• curl  — HTTP lookups\n• jq    — JSON parsing\n• notify-send (libnotify) — desktop notifications\n\nThese are checked automatically by the helper script on every status refresh."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
