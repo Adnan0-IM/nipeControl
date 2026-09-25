@@ -46,13 +46,13 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
+                verticalAlignment: Text.AlignVCenter
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "tune"
                     size: Theme.iconSize
                     color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 StyledText {
@@ -60,14 +60,13 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
-                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
             StringSetting {
                 settingKey: "customNipeDir"
                 label: "Custom Nipe Directory Path"
-                description: "Path to your cloned Nipe repository (leave blank to auto-detect e.g., ~/nipe)"
+                description: "Path to your cloned Nipe repository. Leave blank to use NIPE_DIR from ~/.config/nipeControl/config, then auto-detect (~/nipe). An explicit path that has no nipe.pl is reported instead of falling back."
                 placeholder: "/home/username/nipe"
                 defaultValue: ""
             }
@@ -106,13 +105,13 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
+                verticalAlignment: Text.AlignVCenter
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "toggle_on"
                     size: Theme.iconSize
                     color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 StyledText {
@@ -120,7 +119,6 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
-                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
@@ -141,14 +139,14 @@ PluginSettings {
             ToggleSetting {
                 settingKey: "autoStart"
                 label: "Auto-start on Login"
-                description: "Automatically activate the Tor gateway when the shell starts (requires sudo access)"
+                description: "Activate the Tor gateway once when the shell starts, after the first status read (asks for root with a polkit dialog)"
                 defaultValue: false
             }
         }
     }
 
     // ===================================================================
-    // Sudoers & Permissions Setup
+    // How Permissions Work
     // ===================================================================
     StyledRect {
         width: parent.width
@@ -163,26 +161,25 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
+                verticalAlignment: Text.AlignVCenter
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "verified_user"
                     size: Theme.iconSize
                     color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 StyledText {
-                    text: "Sudoers & Permissions Setup"
+                    text: "How Permissions Work"
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
-                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
             StyledText {
-                text: "Nipe requires root privileges to manage iptables and Tor routing.\n\nTo allow seamless status checks and widget controls without password prompts, add a sudoers rule:"
+                text: "Nipe needs root to reconfigure iptables and the default route, so Start, Stop and Restart run nipe.pl through pkexec. That raises a polkit dialog asking for your password, which is the only place a prompt appears. No sudoers rule and no passwordless root is required or installed."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
@@ -203,13 +200,13 @@ PluginSettings {
                     spacing: Theme.spacingXS
 
                     StyledText {
-                        text: "Create file /etc/sudoers.d/nipe with content (replace /path/to/nipe with your actual Nipe path):"
+                        text: "Reading the status never asks for anything:"
                         font.pixelSize: Theme.fontSizeSmall - 2
                         color: Theme.surfaceVariantText
                     }
 
                     StyledText {
-                        text: "%wheel ALL=(ALL) NOPASSWD: /usr/bin/perl /path/to/nipe/nipe.pl *"
+                        text: "curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip"
                         font.pixelSize: Theme.fontSizeSmall
                         font.family: "monospace"
                         font.weight: Font.Medium
@@ -217,11 +214,19 @@ PluginSettings {
                         width: parent.width
                         wrapMode: Text.WrapAnywhere
                     }
+
+                    StyledText {
+                        text: "The helper asks the Tor Project whether the current connection is a Tor circuit and which exit node it is. If the local Tor instance answers, the gateway is up; if it is silent, a direct request decides whether Tor is down or the network is broken. That is the whole status check, and it is why the bar can refresh on a timer without interrupting you."
+                        font.pixelSize: Theme.fontSizeSmall - 2
+                        color: Theme.surfaceVariantText
+                        wrapMode: Text.WordWrap
+                        width: parent.width
+                    }
                 }
             }
 
             StyledText {
-                text: "Refer to the plugin README.md for complete details."
+                text: "If a polkit dialog never appears, install polkit and make sure your session can ask for authentication."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
@@ -246,13 +251,13 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
+                verticalAlignment: Text.AlignVCenter
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "lightbulb"
                     size: Theme.iconSize
                     color: Theme.warning
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 StyledText {
@@ -260,12 +265,11 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
-                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
             StyledText {
-                text: "• Country detection falls back gracefully: if the IP API is unreachable, only the IP address is shown.\n\n• The DMS plugin helper script must be installed at ~/.local/bin/nipe-widget-py for operation.\n\n• Auto-start only activates once per session to avoid infinite retry loops if Nipe fails to start.\n\n• Use a custom IP API endpoint if ipinfo.io is blocked or rate-limited in your network."
+                text: "• Status reads are silent and unprivileged, so the refresh interval can be as low as 5s without a prompt storm.\n\n• Exit node lookups are cached per IP for 6 hours, and a failing endpoint is backed off for 15 minutes, so a blocked or rate-limited API does not get hammered.\n\n• The helper must be installed at ~/.local/bin/nipe-widget-py. Run it with no arguments to see the commands it accepts.\n\n• Auto-start only activates once per session, and only after a clean status read, so a failed start is not retried in a loop.\n\n• Logs go to ~/.local/share/nipeControl/nipe-widget-py.log."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
@@ -291,13 +295,13 @@ PluginSettings {
             spacing: Theme.spacingM
 
             Row {
+                verticalAlignment: Text.AlignVCenter
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "extension"
                     size: Theme.iconSize
                     color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 StyledText {
@@ -305,12 +309,11 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
-                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
             StyledText {
-                text: "Country detection and notifications require:\n\n• curl  — HTTP lookups\n• jq    — JSON parsing\n• notify-send (libnotify) — desktop notifications\n\nThese are checked automatically by the helper script on every status refresh."
+                text: "Required:\n\n• perl with Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL and Net::SSLeay — run by nipe.pl\n• curl — the status probe and the exit node lookup\n• pkexec (polkit) — only for Start, Stop and Restart\n\nOptional:\n\n• notify-send (libnotify) — desktop notifications\n• wl-copy or xclip (or dms) — the copy IP button\n\nRun ~/.local/bin/nipe-widget-py check-deps for the current state. The result is cached for a day, and missing optional tools are reported without affecting the status read."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
