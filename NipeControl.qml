@@ -19,6 +19,7 @@ PluginComponent {
     property string ipInfoApiEndpoint: pluginData.ipInfoApiEndpoint || "https://ipinfo.io"
 
     // ---- Helper state ----
+    property string statusStdout: ""
     property string statusStderr: ""
     property string controlStderr: ""
     property string controlStdout: ""
