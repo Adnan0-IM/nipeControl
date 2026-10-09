@@ -1,6 +1,6 @@
 # Nipe Control Plugin for DankMaterialShell
 
-**Nipe Control** integrates [Nipe](https://github.com/htbridge/nipe) with DankMaterialShell. It lets you start/stop/restart the Tor gateway, show your exit IP and country, and get desktop notifications — all from the shell bar widget.
+**Nipe Control** integrates [Nipe](https://github.com/htbridge/nipe) with [DankMaterialShell](https://danklinux.com/). It lets you start/stop/restart the Tor gateway, show your exit IP and country, and get desktop notifications — all from the shell bar widget.
 
 ---
 
