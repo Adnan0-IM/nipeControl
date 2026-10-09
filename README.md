@@ -21,10 +21,9 @@
 - `python3` — runs the bundled `nipe-widget-py` helper (no manual install; it runs from the plugin directory)
 - Perl 5.30+ with `Config::Simple`, `JSON`, `Readonly`, `Try::Tiny`, `IO::Socket::SSL`, `Net::SSLeay`
 - `tor`
-- `curl` — the status probe and the exit node lookup
 - `pkexec` (polkit) — only for Start / Stop / Restart
 
-Notifications and the copy IP button use the shell's built-in `dms notify` and `dms cl copy`, so `libnotify` and `wl-clipboard` are not needed.
+The status probe and the exit node lookup are made with the Python standard library, so no separate downloader such as `curl` or `wget` is required. Notifications and the copy IP button use the shell's built-in `dms notify` and `dms cl copy`, so `libnotify` and `wl-clipboard` are not needed.
 
 ---
 
@@ -32,18 +31,18 @@ Notifications and the copy IP button use the shell's built-in `dms notify` and `
 
 ### Arch / Manjaro
 ```bash
-sudo pacman -S python perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor curl polkit
+sudo pacman -S python perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor polkit
 ```
 
 ### Debian / Ubuntu / Mint
 ```bash
 sudo apt update
-sudo apt install -y python3 perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor curl policykit-1
+sudo apt install -y python3 perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor policykit-1
 ```
 
 ### Fedora / RHEL
 ```bash
-sudo dnf install python3 perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor curl polkit
+sudo dnf install python3 perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor polkit
 ```
 
 ### CPAN (if packages missing)
@@ -158,8 +157,8 @@ first checks whether anything is listening on the local SOCKS port. If nothing
 is, no Tor circuit is up and the probe stops there with no network traffic. When
 the port is open it asks the check endpoint through it:
 
-```bash
-curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
+```text
+GET https://check.torproject.org/api/ip   (through SOCKS5 127.0.0.1:9050)
 ```
 
 If the local Tor instance answers, a Tor circuit is up and the reply carries the

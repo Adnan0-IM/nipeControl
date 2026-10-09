@@ -210,7 +210,7 @@ PluginSettings {
                     }
 
                     StyledText {
-                        text: "curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip"
+                        text: "GET https://check.torproject.org/api/ip   (through SOCKS5 127.0.0.1:9050)"
                         font.pixelSize: Theme.fontSizeSmall
                         font.family: Theme.monoFontFamily
                         font.weight: Font.Medium
@@ -319,7 +319,7 @@ PluginSettings {
             }
 
             StyledText {
-                text: "Required:\n\n• python3 — runs the bundled nipe-widget-py helper\n• perl with Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL and Net::SSLeay — run by nipe.pl\n• curl — the status probe and the exit node lookup\n• polkit (pkexec) — only for Start, Stop and Restart\n• tor and the Nipe checkout\n\nNotifications and the copy IP button use the shell's own dms notify and dms cl copy commands, so libnotify and wl-clipboard are not needed. Run the helper's check-deps command for the current state; the result is cached for a day."
+                text: "Required:\n\n• python3 — runs the bundled nipe-widget-py helper, whose status probe and exit node lookup use only the standard library\n• perl with Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL and Net::SSLeay — run by nipe.pl\n• polkit (pkexec) — only for Start, Stop and Restart\n• tor and the Nipe checkout\n\nNotifications and the copy IP button use the shell's own dms notify and dms cl copy commands, so libnotify and wl-clipboard are not needed. Run the helper's check-deps command for the current state; the result is cached for a day."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap

@@ -16,7 +16,6 @@
   "dependencies": [
     "python3",
     "perl (Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL, Net::SSLeay)",
-    "curl",
     "polkit",
     "tor",
     "nipe"

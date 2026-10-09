@@ -30,17 +30,21 @@ Design
 """
 
 import argparse
+import http.client
 import json
 import logging
 import os
 import shlex
 import shutil
 import socket
+import ssl
+import struct
 import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 VERSION = "3.1.0"
 APP = "nipeControl"
@@ -55,7 +59,7 @@ DEP_CACHE_TTL = 24 * 60 * 60
 GEO_CACHE_TTL = 6 * 60 * 60
 GEO_NEGATIVE_CACHE_TTL = 15 * 60
 GEO_CACHE_MAX_ENTRIES = 128
-CURL_MAX_TIME = 5
+HTTP_MAX_TIME = 5
 
 NIPE_SEARCH_PATHS = (
     "~/nipe",
@@ -65,7 +69,7 @@ NIPE_SEARCH_PATHS = (
     "/usr/local/nipe",
 )
 
-REQUIRED_COMMANDS = ("perl", "curl")
+REQUIRED_COMMANDS = ("perl",)
 REQUIRED_PERL_MODULES = (
     "Config::Simple",
     "JSON",
@@ -145,6 +149,92 @@ def _clean_output(text: str, limit: int = 400) -> str:
     if len(cleaned) > limit:
         cleaned = cleaned[: limit - 1].rstrip() + "…"
     return cleaned
+
+
+def _read_exact(sock: socket.socket, count: int) -> bytes:
+    data = bytearray()
+    while len(data) < count:
+        chunk = sock.recv(count - len(data))
+        if not chunk:
+            raise OSError("connection closed during SOCKS negotiation")
+        data += chunk
+    return bytes(data)
+
+
+def _socks5_connect(
+    proxy_host: str, proxy_port: int, host: str, port: int, timeout: float
+) -> socket.socket:
+    """Open host:port through a local SOCKS5 proxy (remote DNS, no auth)."""
+    sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
+    try:
+        sock.settimeout(timeout)
+        sock.sendall(b"\x05\x01\x00")
+        if _read_exact(sock, 2) != b"\x05\x00":
+            raise OSError("SOCKS5 proxy rejected the connection")
+        try:
+            address = b"\x01" + socket.inet_aton(host)
+        except OSError:
+            name = host.encode("idna")
+            address = b"\x03" + bytes((len(name),)) + name
+        sock.sendall(b"\x05\x01\x00" + address + struct.pack("!H", port))
+        reply = _read_exact(sock, 4)
+        if reply[1] != 0:
+            raise OSError(f"SOCKS5 proxy could not reach {host} (code {reply[1]})")
+        if reply[3] == 1:
+            _read_exact(sock, 4)
+        elif reply[3] == 3:
+            _read_exact(sock, _read_exact(sock, 1)[0])
+        elif reply[3] == 4:
+            _read_exact(sock, 16)
+        _read_exact(sock, 2)
+        return sock
+    except BaseException:
+        sock.close()
+        raise
+
+
+class _SocksHTTPConnection(http.client.HTTPConnection):
+    """HTTP connection that reaches the destination through a SOCKS5 proxy."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        proxy_host: str,
+        proxy_port: int,
+        timeout: float,
+    ):
+        super().__init__(host, port, timeout=timeout)
+        self._proxy_host = proxy_host
+        self._proxy_port = proxy_port
+
+    def connect(self) -> None:
+        self.sock = _socks5_connect(
+            self._proxy_host, self._proxy_port, self.host, self.port, self.timeout
+        )
+
+
+class _SocksHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection that reaches the destination through a SOCKS5 proxy."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        proxy_host: str,
+        proxy_port: int,
+        timeout: float,
+    ):
+        super().__init__(host, port, timeout=timeout)
+        self._proxy_host = proxy_host
+        self._proxy_port = proxy_port
+
+    def connect(self) -> None:
+        raw = _socks5_connect(
+            self._proxy_host, self._proxy_port, self.host, self.port, self.timeout
+        )
+        context = self._context or ssl.create_default_context()
+        self.sock = context.wrap_socket(raw, server_hostname=self.host)
 
 
 @dataclass
@@ -294,47 +384,63 @@ class NipeWidgetPy:
     # Status (never elevates)
     # ------------------------------------------------------------------
 
-    def _curl_json(
+    def _http_json(
         self,
         url: str,
         socks_host: str = "",
-        max_time: int = CURL_MAX_TIME,
+        max_time: int = HTTP_MAX_TIME,
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """GET a JSON document. Returns (data, error)."""
-        if not shutil.which("curl"):
-            return None, "curl is not installed"
+        """GET a JSON document with the standard library. Returns (data, error).
 
-        command = [
-            "curl",
-            "-sS",
-            "--fail",
-            "--max-time",
-            str(max_time),
-            "--user-agent",
-            f"{APP}/{VERSION}",
-        ]
+        Uses the platform TLS trust store and, when `socks_host` is given, a
+        local SOCKS5 proxy (remote DNS) for the Tor check. Keeping this in
+        python removes the separate downloader dependency.
+        """
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            return None, f"unsupported URL: {url}"
+        host = parts.hostname
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        path = parts.path or "/"
+        if parts.query:
+            path = f"{path}?{parts.query}"
+
         if socks_host:
-            command += ["--socks5-hostname", socks_host]
-        command.append(url)
-
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=max_time + 5,
+            proxy_host, _, proxy_port = socks_host.partition(":")
+            try:
+                proxy_port_i = int(proxy_port or 1080)
+            except ValueError:
+                return None, f"invalid SOCKS address: {socks_host}"
+            factory = (
+                _SocksHTTPSConnection if parts.scheme == "https" else _SocksHTTPConnection
             )
-        except subprocess.TimeoutExpired:
-            return None, f"request to {url} timed out"
-        except OSError as exc:
-            return None, str(exc)
-
-        if result.returncode != 0:
-            detail = _clean_output(result.stderr, 160)
-            return None, detail or f"curl exited with {result.returncode}"
+            conn: http.client.HTTPConnection = factory(
+                host, port, proxy_host, proxy_port_i, max_time
+            )
+        elif parts.scheme == "https":
+            conn = http.client.HTTPSConnection(host, port, timeout=max_time)
+        else:
+            conn = http.client.HTTPConnection(host, port, timeout=max_time)
 
         try:
-            data = json.loads(result.stdout)
+            conn.request(
+                "GET",
+                path,
+                headers={"User-Agent": f"{APP}/{VERSION}", "Accept": "application/json"},
+            )
+            response = conn.getresponse()
+            status = response.status
+            body = response.read()
+        except (OSError, http.client.HTTPException, ssl.SSLError) as exc:
+            return None, _clean_output(str(exc), 160)
+        finally:
+            conn.close()
+
+        if status != 200:
+            return None, f"{host} returned HTTP {status}"
+
+        try:
+            data = json.loads(body.decode("utf-8", "replace"))
         except ValueError:
             return None, f"{url} did not return JSON"
         if not isinstance(data, dict):
@@ -369,13 +475,13 @@ class NipeWidgetPy:
         socks_host = f"127.0.0.1:{self.config.tor_socks_port}"
         url = self.config.tor_check_url
 
-        data, socks_error = self._curl_json(url, socks_host=socks_host)
+        data, socks_error = self._http_json(url, socks_host=socks_host)
         if data is not None:
             if _truthy(data.get("IsTor")):
                 return True, str(data.get("IP") or ""), None
             return False, "", None
 
-        data, direct_error = self._curl_json(url)
+        data, direct_error = self._http_json(url)
         if data is not None:
             logger.info("Tor SOCKS unavailable (%s); direct check reports no Tor", socks_error)
             return False, "", None
@@ -402,7 +508,7 @@ class NipeWidgetPy:
                 return {}
 
         url = f"{self.config.ip_info_api.rstrip('/')}/{ip}/json"
-        data, error = self._curl_json(url)
+        data, error = self._http_json(url)
         if not data or not data.get("country"):
             logger.warning("Geolocation failed for %s: %s", ip, error)
             if len(cache) < GEO_CACHE_MAX_ENTRIES:
@@ -427,12 +533,6 @@ class NipeWidgetPy:
     def get_json_status(self) -> NipeStatus:
         """The widget's whole world. Unprivileged, no polkit prompt."""
         status = NipeStatus(nipe_dir=self.nipe_dir)
-
-        missing, _ = self.check_dependencies(use_cache=True)
-        blocking = [dep for dep in missing if dep in ("curl",)]
-        if blocking:
-            status.error = f"Missing dependencies: {', '.join(blocking)}"
-            return status
 
         active, ip, error = self.probe_tor()
         status.active = active

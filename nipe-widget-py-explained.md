@@ -67,7 +67,7 @@ crash of the helper itself, which is exactly how it is treated in `NipeControl.q
 | 176-182 | `NipeWidgetPy.__init__` |
 | 188-238 | configuration overlay + Nipe directory resolution |
 | 244-288 | dependency check (cached) + Perl module probe |
-| 294-339 | `_curl_json` — every network call in the file |
+| 147-330 | SOCKS5 plumbing + `_http_json` — every network call in the file |
 | 341-368 | `probe_tor` — the unprivileged status read |
 | 370-406 | `geolocate` — ipinfo.io-style lookup, cached per IP |
 | 408-434 | `get_json_status` — assembles the widget's payload |
@@ -153,9 +153,11 @@ Found" in its footer. Only when nothing is explicit does it scan
 
 Returns `(missing, optional_missing)`.
 
-- **Required:** `python3` to run the helper at all, then `perl`, `curl`, and the
-  Perl modules nipe.pl loads (`Config::Simple`, `JSON`, `Readonly`, `Try::Tiny`,
-  `IO::Socket::SSL`, `Net::SSLeay`) — 65-73.
+- **Required:** `python3` to run the helper at all, then `perl` and the Perl
+  modules nipe.pl loads (`Config::Simple`, `JSON`, `Readonly`, `Try::Tiny`,
+  `IO::Socket::SSL`, `Net::SSLeay`) — 65-73. The status path itself needs no
+  external tool: the HTTP and SOCKS5 work is done with the Python standard
+  library, so `curl` and `wget` are not dependencies.
 - **Optional:** `pkexec` (74). It never blocks anything; it is reported so a
   human can see why Start/Stop/Restart did nothing. Notifications and the copy
   button go through the shell's own `dms notify` and `dms cl copy`, so
@@ -171,23 +173,22 @@ one still gets a precise list.
 The verdict is cached in `~/.local/share/nipeControl/deps.json` for 24 h
 (`DEP_CACHE_TTL`, 51). The answer only changes when the user installs something.
 
-`get_json_status` (412-416) calls it but only lets `curl` block, because that is
-the only dependency the status path uses. `run_nipe_cmd` (447-449) uses the full
-list, so a missing Perl module is reported *before* the user is asked for a
-password.
+`get_json_status` no longer lets any external tool block a read because the
+status probe uses only the standard library. `run_nipe_cmd` uses the full list,
+so a missing Perl module is reported *before* the user is asked for a password.
 
 ---
 
 ## 7. `probe_tor` — the unprivileged status read (341-368)
 
 ```python
-data, socks_error = self._curl_json(url, socks_host="127.0.0.1:9050")
+data, socks_error = self._http_json(url, socks_host="127.0.0.1:9050")
 if data is not None:
     if _truthy(data.get("IsTor")):
         return True, str(data.get("IP") or ""), None
     return False, "", None
 
-data, direct_error = self._curl_json(url)
+data, direct_error = self._http_json(url)
 if data is not None:
     return False, "", None          # reachable, and it cannot be a Tor circuit
 return False, "", "Tor check endpoint unreachable (…)"
@@ -200,10 +201,13 @@ endpoint on that path means "Tor is down". Both paths failing means the network
 itself is unreachable, which is the one case worth an error message — a wrong
 answer would be worse than an honest "I don't know".
 
-`_curl_json` (294-339) is the only network code in the file: `curl -sS --fail
---max-time N` with an optional `--socks5-hostname`, a 5-second curl budget, a
-`max_time + 5` subprocess timeout, and a `(data, error)` return instead of
-raising. The URL is passed as a list element, never through a shell.
+`_http_json` is the only network code in the file. It parses the URL with
+`urllib.parse.urlsplit`, opens an `http.client` connection (direct, or through
+`_SocksHTTPSConnection`/`_SocksHTTPConnection` when a SOCKS host is given), keeps
+a 5-second budget, and returns `(data, error)` instead of raising. The SOCKS path
+does the RFC 1928 handshake by hand over a plain socket — remote DNS via the
+proxy — then wraps the socket with the platform TLS context, so the Tor check
+needs nothing installed beyond `python3`.
 
 ---
 
@@ -273,9 +277,8 @@ exit code and still prints JSON for `json-status`.
 ```
 nipe-widget-py json-status
    ├─ NipeConfig (CLI)  ──▶ _apply_config_file  ──▶ _find_nipe_dir
-   ├─ check_dependencies()        (cached 24 h; only curl can block)
    ├─ probe_tor()                 SOCKS port closed → inactive, no network traffic
-   │     └─ port open             → curl --socks5-hostname 127.0.0.1:9050 …/api/ip
+   │     └─ port open             → GET …/api/ip through SOCKS5 127.0.0.1:9050
    │           ├─ answered + IsTor → active, exit IP
    │           └─ silent           → one direct request decides "down" vs "no network"
    ├─ geolocate(ip)               cached 6 h per IP
@@ -304,10 +307,11 @@ Nothing is written outside `~/.local/share/nipeControl` and the two config paths
 
 ## 13. Runtime characteristics
 
-A background poll is one `curl` (or two, only when SOCKS is silent and the direct
-fallback runs) plus one `curl` for geolocation on a cache miss. No interpreter
-start, no polkit dialog, no firewall work. A cached read is ~0.1 s. A control
-action is one polkit dialog plus nipe.pl's own work.
+A background poll is one HTTPS request from the running helper (or two, only
+when SOCKS is silent and the direct fallback runs) plus one request for
+geolocation on a cache miss. No external tool is spawned, no polkit dialog, no
+firewall work. A cached read is ~0.1 s. A control action is one polkit dialog
+plus nipe.pl's own work.
 
 ---
 
