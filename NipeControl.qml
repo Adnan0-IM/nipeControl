@@ -664,7 +664,7 @@ PluginComponent {
                             text: root.isActionRunning && root.statusText === "Starting..." ? "Starting…" : "Start"
                             iconName: "play_arrow"
                             width: actionRow.btnWidth
-                            enabled: root.nipeReady && !root.isActionRunning && !root.nipeActive
+                            enabled: root.nipeReady && !root.isActionRunning
                             onClicked: root.executeControl("start")
                         }
 
@@ -672,7 +672,7 @@ PluginComponent {
                             text: root.isActionRunning && root.statusText === "Stopping..." ? "Stopping…" : "Stop"
                             iconName: "stop"
                             width: actionRow.btnWidth
-                            enabled: root.nipeReady && !root.isActionRunning && root.nipeActive
+                            enabled: root.nipeReady && !root.isActionRunning
                             onClicked: root.executeControl("stop")
                         }
 

@@ -15,7 +15,13 @@
   "requires_dms": ">=1.4.0",
   "dependencies": [
     "python3",
-    "perl (Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL, Net::SSLeay)",
+    "perl",
+    "perl-config-simple",
+    "perl-json",
+    "perl-readonly",
+    "perl-try-tiny",
+    "perl-io-socket-ssl",
+    "perl-net-ssleay",
     "polkit",
     "tor",
     "nipe"

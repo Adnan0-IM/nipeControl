@@ -162,7 +162,9 @@ GET https://check.torproject.org/api/ip   (through SOCKS5 127.0.0.1:9050)
 ```
 
 If the local Tor instance answers, a Tor circuit is up and the reply carries the
-exit IP. This reports whether a Tor circuit is reachable, not whether Nipe's
+exit IP. The exit IP is then looked up at the configured geolocation endpoint
+through the same SOCKS circuit, so the address is never sent from your real
+connection. This reports whether a Tor circuit is reachable, not whether Nipe's
 redirect is installed; with a plain Tor service running and Nipe stopped, the
 circuit is up even though system traffic is not routed through it. If SOCKS is
 silent with the port still open, one direct request decides whether Tor is down

@@ -218,6 +218,11 @@ documents. A bare positional/`--api` override now genuinely takes effect; in the
 previous version the argument was threaded into `_parse_status_output`, which
 ignored it, so the setting was a no-op.
 
+The lookup goes through the same SOCKS circuit as the Tor check (`socks_host`
+is threaded in from `get_json_status`), so the exit IP is never requested from
+the user's real address. If the circuit is down the lookup is skipped rather
+than retrying directly.
+
 `country` is the two-letter code. `country_name`/`name` are used when an API
 supplies them and otherwise the code is repeated in `country`; the widget
 (`locationLabel()`) prefers city and region, which ipinfo.io *does* return, and

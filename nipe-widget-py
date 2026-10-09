@@ -492,8 +492,14 @@ class NipeWidgetPy:
             f"Tor check endpoint unreachable ({direct_error or socks_error}). Is the network up?",
         )
 
-    def geolocate(self, ip: str) -> Dict[str, str]:
-        """ipinfo.io-style lookup for the exit IP, cached per IP."""
+    def geolocate(self, ip: str, socks_host: str = "") -> Dict[str, str]:
+        """ipinfo.io-style lookup for the exit IP, cached per IP.
+
+        The lookup rides the same SOCKS circuit as the Tor check so the exit
+        IP is never sent from the user's real address. When the circuit is
+        down the lookup is skipped instead of falling back to a direct
+        request, which would leak the address this plugin is meant to hide.
+        """
         if not ip:
             return {}
 
@@ -508,7 +514,7 @@ class NipeWidgetPy:
                 return {}
 
         url = f"{self.config.ip_info_api.rstrip('/')}/{ip}/json"
-        data, error = self._http_json(url)
+        data, error = self._http_json(url, socks_host=socks_host)
         if not data or not data.get("country"):
             logger.warning("Geolocation failed for %s: %s", ip, error)
             if len(cache) < GEO_CACHE_MAX_ENTRIES:
@@ -545,7 +551,8 @@ class NipeWidgetPy:
 
         status.ip = ip
         if ip:
-            info = self.geolocate(ip)
+            socks_host = f"127.0.0.1:{self.config.tor_socks_port}"
+            info = self.geolocate(ip, socks_host=socks_host)
             status.country_code = info.get("country_code", "")
             status.country = info.get("country", "")
             status.city = info.get("city", "")
