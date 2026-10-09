@@ -354,13 +354,14 @@ class NipeWidgetPy:
     def probe_tor(self) -> Tuple[bool, str, Optional[str]]:
         """Ask the Tor check endpoint through SOCKS. Returns (active, ip, error).
 
-        Nothing listening on the local SOCKS port means Nipe/Tor is off, so the
-        probe returns immediately without touching the network at all. That is
-        what keeps the widget cheap while it is idle. When the port is open a
-        SOCKS answer is authoritative: if the local Tor instance answers, the
-        gateway is up and `IsTor` plus `IP` are the exit node. Only when SOCKS
-        is silent with the port still open do we fall back to a direct request
-        to tell a Tor problem apart from a broken network.
+        Nothing listening on the local SOCKS port means no Tor circuit is up,
+        so the probe returns immediately without touching the network at all.
+        That is what keeps the widget cheap while it is idle. When the port is
+        open a SOCKS answer tells us a Tor circuit is reachable: if the local
+        Tor instance answers, `IsTor` plus `IP` are the exit node. This is not
+        proof that Nipe's redirect is installed, only that a circuit is up. Only
+        when SOCKS is silent with the port still open do we fall back to a
+        direct request to tell a Tor problem apart from a broken network.
         """
         if not self._socks_port_open():
             return False, "", None

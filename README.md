@@ -155,18 +155,21 @@ No `/etc/sudoers.d/nipe` is created or needed.
 The widget's own status refresh does not use `nipe.pl` at all. `nipe.pl status`
 only asks the Tor Project whether the connection is a Tor circuit, so the helper
 first checks whether anything is listening on the local SOCKS port. If nothing
-is, the gateway is off and the probe stops there with no network traffic. When
+is, no Tor circuit is up and the probe stops there with no network traffic. When
 the port is open it asks the check endpoint through it:
 
 ```bash
 curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
 ```
 
-If the local Tor instance answers, the gateway is up and the reply carries the
-exit IP. If SOCKS is silent with the port still open, one direct request decides
-whether Tor is down or the network itself is unreachable. Nothing here needs
-root, so the refresh timer never triggers a prompt; it also backs off to at least
-2 minutes while the gateway is off.
+If the local Tor instance answers, a Tor circuit is up and the reply carries the
+exit IP. This reports whether a Tor circuit is reachable, not whether Nipe's
+redirect is installed; with a plain Tor service running and Nipe stopped, the
+circuit is up even though system traffic is not routed through it. If SOCKS is
+silent with the port still open, one direct request decides whether Tor is down
+or the network itself is unreachable. Nothing here needs root, so the refresh
+timer never triggers a prompt; it also backs off to at least 2 minutes while no
+circuit is up.
 
 **Auto-start on Login** raises the usual polkit dialog once, because it runs
 `nipe.pl start`.

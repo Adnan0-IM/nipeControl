@@ -152,9 +152,9 @@ PluginComponent {
 
         if (root.hasInitialStatus && root.enableNotifications) {
             if (newActive && !root.prevActive) {
-                sendNotification("Nipe Started", "Tor gateway is now active. Exit IP: " + root.ipAddress);
+                sendNotification("Tor Circuit Up", "A local Tor circuit is reachable. Exit IP: " + root.ipAddress);
             } else if (!newActive && root.prevActive) {
-                sendNotification("Nipe Stopped", "Tor gateway is now inactive. Traffic routed directly.");
+                sendNotification("Tor Circuit Down", "No local Tor circuit on the SOCKS port. Traffic may be routed directly.");
             }
         }
         root.prevActive = newActive;
@@ -405,8 +405,8 @@ PluginComponent {
             headerText: "Nipe Tor Control"
             detailsText: {
                 if (root.errorMessage !== "") return "Status: Helper Error";
-                if (root.nipeActive) return "Tor Gateway: Enabled • IP: " + root.ipAddress;
-                return "Tor Gateway: Disabled";
+                if (root.nipeActive) return "Tor circuit up • Exit IP: " + root.ipAddress;
+                return "No Tor circuit detected";
             }
             showCloseButton: true
 
@@ -481,7 +481,7 @@ PluginComponent {
                                 spacing: Theme.spacingXS
 
                                 StyledText {
-                                    text: root.isActionRunning ? root.statusText : (root.nipeActive ? "Tor Gateway Active" : (root.errorMessage !== "" ? "Attention Required" : "Tor Gateway Inactive"))
+                                    text: root.isActionRunning ? root.statusText : (root.nipeActive ? "Tor Circuit Active" : (root.errorMessage !== "" ? "Attention Required" : "No Tor Circuit"))
                                     font.pixelSize: Theme.fontSizeLarge
                                     font.weight: Font.Bold
                                     color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceText)
@@ -490,7 +490,7 @@ PluginComponent {
                                 }
 
                                 StyledText {
-                                    text: root.errorMessage !== "" ? "The helper could not read the gateway state" : (root.nipeActive ? "All system traffic is routed through Tor" : "Traffic is routed directly (Default Gateway)")
+                                    text: root.errorMessage !== "" ? "The helper could not read the Tor state" : (root.nipeActive ? "A local Tor circuit is reachable (exit IP below)" : "No local Tor circuit detected")
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: Theme.surfaceVariantText
                                     wrapMode: Text.WordWrap

@@ -220,7 +220,7 @@ PluginSettings {
                     }
 
                     StyledText {
-                        text: "The helper asks the Tor Project whether the current connection is a Tor circuit and which exit node it is. If the local Tor instance answers, the gateway is up; if it is silent, a direct request decides whether Tor is down or the network is broken. That is the whole status check, and it is why the bar can refresh on a timer without interrupting you."
+                        text: "The helper asks the Tor Project whether the current connection is a Tor circuit and which exit node it is. If the local Tor instance answers, a Tor circuit is up; if it is silent, a direct request decides whether Tor is down or the network is broken. This reflects whether a Tor circuit is reachable, not whether Nipe's redirect is installed. That is the whole status check, and it is why the bar can refresh on a timer without interrupting you."
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceVariantText
                         wrapMode: Text.WordWrap
@@ -274,7 +274,7 @@ PluginSettings {
             }
 
             StyledText {
-                text: "• Status reads are silent and unprivileged, so the refresh interval never triggers a prompt. While the gateway is active it polls at the configured interval; while it is off it backs off to at least 2 minutes.\n\n• Exit node lookups are cached per IP for 6 hours, and a failing endpoint is backed off for 15 minutes, so a blocked or rate-limited API does not get hammered.\n\n• The bundled helper runs straight from the plugin directory; no manual install is needed. Run nipe-widget-py with no arguments to see the commands it accepts.\n\n• Auto-start only activates once per session, and only after a clean status read, so a failed start is not retried in a loop.\n\n• Logs go to ~/.local/share/nipeControl/nipe-widget-py.log."
+                text: "• Status reads are silent and unprivileged, so the refresh interval never triggers a prompt. While a Tor circuit is active it polls at the configured interval; while it is off it backs off to at least 2 minutes.\n\n• Exit node lookups are cached per IP for 6 hours, and a failing endpoint is backed off for 15 minutes, so a blocked or rate-limited API does not get hammered.\n\n• The bundled helper runs straight from the plugin directory; no manual install is needed. Run nipe-widget-py with no arguments to see the commands it accepts.\n\n• Auto-start only activates once per session, and only after a clean status read, so a failed start is not retried in a loop.\n\n• Logs go to ~/.local/share/nipeControl/nipe-widget-py.log."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
