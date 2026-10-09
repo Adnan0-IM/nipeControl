@@ -1,8 +1,8 @@
 # `nipe-widget-py` — Full Walkthrough
 
-Path: `plugins/nipeControl/nipe-widget-py` (566 lines, Python 3, `chmod +x`).
-Installed as `~/.local/bin/nipe-widget-py` — a symlink to the file in the plugin
-directory, so the repo stays the single source of truth.
+Path: `plugins/nipeControl/nipe-widget-py` (Python 3, `chmod +x`). DMS unpacks the
+whole plugin directory, so `NipeControl.qml` runs this file in place. A
+`~/.local/bin/nipe-widget-py` symlink is only a fallback for older setups.
 
 It drives [nipe](https://github.com/htbridge/nipe), a Perl Tor gateway, and prints
 machine-readable JSON that the DankMaterialShell panel widget (`NipeControl.qml`)
@@ -153,13 +153,15 @@ Found" in its footer. Only when nothing is explicit does it scan
 
 Returns `(missing, optional_missing)`.
 
-- **Required:** `perl`, `curl`, and the Perl modules nipe.pl loads
-  (`Config::Simple`, `JSON`, `Readonly`, `Try::Tiny`, `IO::Socket::SSL`,
-  `Net::SSLeay`) — 65-73.
-- **Optional:** `pkexec`, `notify-send`, `wl-copy`, `xclip`, `dms` (74). These
-  never block anything; they are reported so a human can see why a button or a
-  notification did nothing. `jq` is gone: nothing in the helper ever used it, and
-  the old version failed a status read over a tool it did not call.
+- **Required:** `python3` to run the helper at all, then `perl`, `curl`, and the
+  Perl modules nipe.pl loads (`Config::Simple`, `JSON`, `Readonly`, `Try::Tiny`,
+  `IO::Socket::SSL`, `Net::SSLeay`) — 65-73.
+- **Optional:** `pkexec` (74). It never blocks anything; it is reported so a
+  human can see why Start/Stop/Restart did nothing. Notifications and the copy
+  button go through the shell's own `dms notify` and `dms cl copy`, so
+  `notify-send`, `wl-copy` and `xclip` are not dependencies. `jq` is gone too:
+  nothing in the helper ever used it, and the old version failed a status read
+  over a tool it did not call.
 
 `_perl_modules_ok` (275-288) builds one `perl -e 'use A (); use B (); … 1;'` and
 runs it **once** instead of starting an interpreter per module. Only if that fails
@@ -272,9 +274,10 @@ exit code and still prints JSON for `json-status`.
 nipe-widget-py json-status
    ├─ NipeConfig (CLI)  ──▶ _apply_config_file  ──▶ _find_nipe_dir
    ├─ check_dependencies()        (cached 24 h; only curl can block)
-   ├─ probe_tor()                 curl --socks5-hostname 127.0.0.1:9050 …/api/ip
-   │     ├─ answered + IsTor      → active, exit IP
-   │     └─ silent                → one direct request decides "down" vs "no network"
+   ├─ probe_tor()                 SOCKS port closed → inactive, no network traffic
+   │     └─ port open             → curl --socks5-hostname 127.0.0.1:9050 …/api/ip
+   │           ├─ answered + IsTor → active, exit IP
+   │           └─ silent           → one direct request decides "down" vs "no network"
    ├─ geolocate(ip)               cached 6 h per IP
    └─ NipeStatus.to_json()  ──▶ stdout ──▶ NipeControl.qml
 
@@ -343,9 +346,9 @@ action is one polkit dialog plus nipe.pl's own work.
    the rules needs root, which is exactly what the old design paid for on every
    poll.
 5. **Country name needs a different provider.** ipinfo.io returns only the code.
-6. **The helper must live at `~/.local/bin/nipe-widget-py`.** It is a symlink into
-   the plugin directory here; on another machine either copy it or re-create the
-   symlink.
+6. **The helper runs from the plugin directory.** DMS installs the whole
+   directory alongside `NipeControl.qml`; a `~/.local/bin` copy is only a fallback
+   when the plugin path cannot be resolved.
 
 ---
 

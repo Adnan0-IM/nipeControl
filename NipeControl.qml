@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Common
@@ -12,7 +13,13 @@ PluginComponent {
 
     // ---- Configuration from DankMaterialShell plugin settings ----
     property string customNipeDir: pluginData.customNipeDir || ""
-    property int refreshIntervalSec: Math.max(5, parseInt(pluginData.refreshInterval, 10) || 15)
+    property int refreshIntervalSec: Math.max(15, parseInt(pluginData.refreshInterval, 10) || 30)
+    // Reading the status costs a python start (plus a Tor probe once a circuit
+    // is up), so poll slowly while the gateway is off and only tighten up once
+    // there is a live circuit to track.
+    readonly property int activeRefreshSec: root.refreshIntervalSec
+    readonly property int idleRefreshSec: Math.max(120, root.refreshIntervalSec * 4)
+    readonly property int effectiveRefreshSec: root.nipeActive ? activeRefreshSec : idleRefreshSec
     property bool showCountry: pluginData.showCountry ?? true
     property bool enableNotifications: pluginData.enableNotifications ?? true
     property bool autoStartEnabled: pluginData.autoStart ?? false
@@ -66,14 +73,18 @@ PluginComponent {
     }
 
     function getHelperPath() {
+        // DMS installs the whole plugin directory, so the helper is already
+        // next to this file. Fall back to ~/.local/bin for older/manual setups.
+        var dir = pluginService && pluginService.getPluginPath ? pluginService.getPluginPath(pluginId) : "";
+        if (dir !== "") return dir + "/nipe-widget-py";
         return (Quickshell.env("HOME") || "/home") + "/.local/bin/nipe-widget-py";
     }
 
     function sendNotification(title, body) {
         if (!root.enableNotifications) return;
         Quickshell.execDetached([
-            "notify-send", "-a", "Nipe Control", "-i", "security",
-            title, body
+            "dms", "notify", title, body,
+            "--app", "Nipe Control", "--icon", "security"
         ]);
     }
 
@@ -200,11 +211,7 @@ PluginComponent {
 
     function copyIpToClipboard() {
         if (root.ipAddress) {
-            Quickshell.execDetached([
-                "sh", "-c",
-                "dms cl copy \"$1\" 2>/dev/null || printf '%s' \"$1\" | wl-copy 2>/dev/null || printf '%s' \"$1\" | xclip -selection clipboard 2>/dev/null",
-                "sh", root.ipAddress
-            ]);
+            Quickshell.execDetached(["dms", "cl", "copy", root.ipAddress]);
             root.ipCopiedJustNow = true;
             copiedResetTimer.restart();
             showToast("IP Copied", "Copied " + root.ipAddress + " to clipboard");
@@ -299,7 +306,7 @@ PluginComponent {
 
     Timer {
         id: autoRefreshTimer
-        interval: root.refreshIntervalSec * 1000
+        interval: root.effectiveRefreshSec * 1000
         repeat: true
         running: true
         onTriggered: root.refreshStatus(false)
@@ -317,14 +324,14 @@ PluginComponent {
     // Horizontal Bar Pill
     // =====================================================================
     horizontalBarPill: Component {
-        Row {
+        RowLayout {
             spacing: Theme.spacingXS
-            verticalAlignment: Text.AlignVCenter
 
             DankSpinner {
                 size: Theme.iconSize - 6
                 running: root.isActionRunning || root.isManualRefreshing
                 visible: running
+                Layout.alignment: Qt.AlignVCenter
             }
 
             DankIcon {
@@ -332,6 +339,7 @@ PluginComponent {
                 size: Theme.iconSize - 6
                 visible: !root.isActionRunning && !root.isManualRefreshing
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
+                Layout.alignment: Qt.AlignVCenter
             }
 
             StyledText {
@@ -350,6 +358,7 @@ PluginComponent {
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
+                Layout.alignment: Qt.AlignVCenter
             }
         }
     }
@@ -358,14 +367,14 @@ PluginComponent {
     // Vertical Bar Pill
     // =====================================================================
     verticalBarPill: Component {
-        Column {
+        ColumnLayout {
             spacing: Theme.spacingXS
-            horizontalAlignment: Text.AlignHCenter
 
             DankSpinner {
                 size: Theme.iconSize - 8
                 running: root.isActionRunning || root.isManualRefreshing
                 visible: running
+                Layout.alignment: Qt.AlignHCenter
             }
 
             DankIcon {
@@ -373,6 +382,7 @@ PluginComponent {
                 size: Theme.iconSize - 8
                 visible: !root.isActionRunning && !root.isManualRefreshing
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
+                Layout.alignment: Qt.AlignHCenter
             }
 
             StyledText {
@@ -380,6 +390,7 @@ PluginComponent {
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
+                Layout.alignment: Qt.AlignHCenter
             }
         }
     }
@@ -406,7 +417,7 @@ PluginComponent {
                     DankActionButton {
                         iconName: "refresh"
                         iconColor: Theme.surfaceVariantText
-                        buttonSize: 28
+                        buttonSize: Theme.iconSize
                         tooltipText: "Refresh status"
                         tooltipSide: "bottom"
                         enabled: !root.isActionRunning && !root.isManualRefreshing
@@ -430,7 +441,7 @@ PluginComponent {
 
                     Rectangle {
                         width: parent.width
-                        height: 3
+                        height: Theme.spacingXXS
                         radius: Theme.cornerRadiusSmall
                         visible: root.nipeActive || root.errorMessage !== ""
                         color: root.errorMessage !== "" ? Theme.error : Theme.primary
@@ -444,26 +455,29 @@ PluginComponent {
                         anchors.margins: Theme.spacingM
                         spacing: Theme.spacingS
 
-                        Row {
+                        RowLayout {
                             width: parent.width
                             spacing: Theme.spacingM
-                            verticalAlignment: Text.AlignVCenter
 
                             DankSpinner {
-                                size: 36
+                                size: Theme.iconSizeLarge
                                 running: root.isActionRunning
                                 visible: running
+                                Layout.alignment: Qt.AlignVCenter
                             }
 
                             DankIcon {
                                 name: root.nipeActive ? "verified_user" : (root.errorMessage !== "" ? "error" : "security")
-                                size: 36
+                                size: Theme.iconSizeLarge
                                 visible: !root.isActionRunning
                                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
+                                Layout.alignment: Qt.AlignVCenter
                             }
 
                             Column {
-                                width: parent.width - 36 - Theme.spacingM - (liveChip.visible ? (liveChip.width + Theme.spacingM) : 0)
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                Layout.minimumWidth: 0
                                 spacing: Theme.spacingXS
 
                                 StyledText {
@@ -472,7 +486,7 @@ PluginComponent {
                                     font.weight: Font.Bold
                                     color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceText)
                                     elide: Text.ElideRight
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                 }
 
                                 StyledText {
@@ -480,37 +494,39 @@ PluginComponent {
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: Theme.surfaceVariantText
                                     wrapMode: Text.WordWrap
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                 }
                             }
 
                             // Live status chip
                             StyledRect {
                                 id: liveChip
-                                width: chipRow.implicitWidth + Theme.spacingM * 2
-                                height: 24
+                                Layout.preferredWidth: chipRow.implicitWidth + Theme.spacingM * 2
+                                Layout.alignment: Qt.AlignVCenter
+                                height: Theme.iconSize
                                 radius: height / 2
                                 visible: !root.isActionRunning && root.errorMessage === ""
                                 color: root.nipeActive ? Theme.withAlpha(Theme.success, 0.18) : Theme.surfaceContainer
 
-                                Row {
+                                RowLayout {
                                     id: chipRow
-                                    anchors.centerIn: parent
+                                    anchors.fill: parent
                                     spacing: Theme.spacingXS
-                                    verticalAlignment: Text.AlignVCenter
 
                                     Rectangle {
-                                        width: 8
-                                        height: 8
-                                        radius: 4
+                                        Layout.alignment: Qt.AlignVCenter
+                                        width: Theme.spacingS
+                                        height: Theme.spacingS
+                                        radius: Theme.spacingXS
                                         color: root.nipeActive ? Theme.success : Theme.surfaceVariantText
                                     }
 
                                     StyledText {
                                         text: root.nipeActive ? "LIVE" : "IDLE"
-                                        font.pixelSize: Theme.fontSizeSmall - 2
+                                        font.pixelSize: Theme.fontSizeSmall
                                         font.weight: Font.Bold
                                         color: root.nipeActive ? Theme.success : Theme.surfaceVariantText
+                                        Layout.alignment: Qt.AlignVCenter
                                     }
                                 }
                             }
@@ -524,28 +540,31 @@ PluginComponent {
                             color: Theme.surfaceContainerHighest
                             visible: root.nipeActive
 
-                            Row {
+                            RowLayout {
                                 id: connRow
                                 anchors.fill: parent
                                 anchors.margins: Theme.spacingS
                                 spacing: Theme.spacingS
-                                verticalAlignment: Text.AlignVCenter
 
                                 DankIcon {
                                     id: lanIcon
                                     name: "lan"
                                     size: Theme.iconSize - 2
                                     color: Theme.primary
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
 
                                 Column {
-                                    width: parent.width - lanIcon.width - copyBtn.width - connRow.spacing * 2
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.minimumWidth: 0
                                     spacing: Theme.spacingXS
 
                                     StyledText {
                                         text: "Current External IP"
-                                        font.pixelSize: Theme.fontSizeSmall - 2
+                                        font.pixelSize: Theme.fontSizeSmall
                                         color: Theme.surfaceVariantText
+                                        Layout.fillWidth: true
                                     }
 
                                     StyledText {
@@ -554,15 +573,15 @@ PluginComponent {
                                         font.weight: Font.Bold
                                         color: Theme.surfaceText
                                         elide: Text.ElideRight
-                                        width: parent.width
+                                        Layout.fillWidth: true
                                     }
 
                                     StyledText {
                                         text: root.locationLabel()
-                                        font.pixelSize: Theme.fontSizeSmall - 2
+                                        font.pixelSize: Theme.fontSizeSmall
                                         color: Theme.surfaceVariantText
                                         elide: Text.ElideRight
-                                        width: parent.width
+                                        Layout.fillWidth: true
                                         visible: text !== ""
                                     }
                                 }
@@ -573,6 +592,7 @@ PluginComponent {
                                     iconName: root.ipCopiedJustNow ? "check" : "content_copy"
                                     onClicked: root.copyIpToClipboard()
                                     enabled: root.ipAddress !== ""
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
                             }
                         }
@@ -593,14 +613,14 @@ PluginComponent {
                         anchors.margins: Theme.spacingM
                         spacing: Theme.spacingS
 
-                        Row {
+                        RowLayout {
                             spacing: Theme.spacingS
-                            verticalAlignment: Text.AlignVCenter
 
                             DankIcon {
                                 name: "error"
                                 size: Theme.iconSize
                                 color: Theme.error
+                                Layout.alignment: Qt.AlignVCenter
                             }
 
                             StyledText {
@@ -608,6 +628,7 @@ PluginComponent {
                                 font.pixelSize: Theme.fontSizeMedium
                                 font.weight: Font.Bold
                                 color: Theme.error
+                                Layout.alignment: Qt.AlignVCenter
                             }
                         }
 
@@ -666,32 +687,34 @@ PluginComponent {
                 }
 
                 // ---- Footer: dir path + refresh ----
-                Row {
+                RowLayout {
                     id: footerRow
                     width: parent.width
                     spacing: Theme.spacingS
-                    verticalAlignment: Text.AlignVCenter
 
                     DankIcon {
                         id: folderIcon
                         name: root.nipeReady ? "folder" : "warning"
                         size: Theme.iconSize - 6
                         color: root.nipeReady ? Theme.primary : Theme.error
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
                     StyledText {
                         text: root.nipeReady ? "Nipe: " + root.nipeDir : "Nipe Directory Not Found"
-                        font.pixelSize: Theme.fontSizeSmall - 2
+                        font.pixelSize: Theme.fontSizeSmall
                         color: root.nipeReady ? Theme.surfaceVariantText : Theme.error
                         elide: Text.ElideMiddle
-                        width: parent.width - folderIcon.width - refreshBtn.width - (footerSpinner.visible ? (footerSpinner.width + footerRow.spacing) : 0) - footerRow.spacing * 2
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
                     DankSpinner {
                         id: footerSpinner
-                        size: 14
+                        size: Theme.iconSizeSmall
                         running: root.isManualRefreshing
                         visible: running
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
                     DankButton {
@@ -699,6 +722,7 @@ PluginComponent {
                         iconName: "refresh"
                         onClicked: root.refreshStatus(true)
                         enabled: !root.isActionRunning && !root.isManualRefreshing
+                        Layout.alignment: Qt.AlignVCenter
                     }
                 }
             }

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -45,14 +46,14 @@ PluginSettings {
             anchors.margins: Theme.spacingL
             spacing: Theme.spacingM
 
-            Row {
-                verticalAlignment: Text.AlignVCenter
+            RowLayout {
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "tune"
                     size: Theme.iconSize
                     color: Theme.primary
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 StyledText {
@@ -60,6 +61,7 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
@@ -74,9 +76,9 @@ PluginSettings {
             StringSetting {
                 settingKey: "refreshInterval"
                 label: "Status Refresh Interval (seconds)"
-                description: "How often to check Nipe status and external IP (minimum 5s)"
-                placeholder: "15"
-                defaultValue: "15"
+                description: "How often to check Nipe status while a Tor circuit is active (minimum 15s). When the gateway is off, status is polled far less often."
+                placeholder: "30"
+                defaultValue: "30"
             }
 
             StringSetting {
@@ -104,14 +106,14 @@ PluginSettings {
             anchors.margins: Theme.spacingL
             spacing: Theme.spacingM
 
-            Row {
-                verticalAlignment: Text.AlignVCenter
+            RowLayout {
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "toggle_on"
                     size: Theme.iconSize
                     color: Theme.primary
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 StyledText {
@@ -119,6 +121,7 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
@@ -160,14 +163,14 @@ PluginSettings {
             anchors.margins: Theme.spacingL
             spacing: Theme.spacingM
 
-            Row {
-                verticalAlignment: Text.AlignVCenter
+            RowLayout {
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "verified_user"
                     size: Theme.iconSize
                     color: Theme.primary
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 StyledText {
@@ -175,6 +178,7 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
@@ -201,14 +205,14 @@ PluginSettings {
 
                     StyledText {
                         text: "Reading the status never asks for anything:"
-                        font.pixelSize: Theme.fontSizeSmall - 2
+                        font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceVariantText
                     }
 
                     StyledText {
                         text: "curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip"
                         font.pixelSize: Theme.fontSizeSmall
-                        font.family: "monospace"
+                        font.family: Theme.monoFontFamily
                         font.weight: Font.Medium
                         color: Theme.primary
                         width: parent.width
@@ -217,7 +221,7 @@ PluginSettings {
 
                     StyledText {
                         text: "The helper asks the Tor Project whether the current connection is a Tor circuit and which exit node it is. If the local Tor instance answers, the gateway is up; if it is silent, a direct request decides whether Tor is down or the network is broken. That is the whole status check, and it is why the bar can refresh on a timer without interrupting you."
-                        font.pixelSize: Theme.fontSizeSmall - 2
+                        font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceVariantText
                         wrapMode: Text.WordWrap
                         width: parent.width
@@ -250,14 +254,14 @@ PluginSettings {
             anchors.margins: Theme.spacingL
             spacing: Theme.spacingM
 
-            Row {
-                verticalAlignment: Text.AlignVCenter
+            RowLayout {
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "lightbulb"
                     size: Theme.iconSize
                     color: Theme.warning
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 StyledText {
@@ -265,11 +269,12 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
             StyledText {
-                text: "• Status reads are silent and unprivileged, so the refresh interval can be as low as 5s without a prompt storm.\n\n• Exit node lookups are cached per IP for 6 hours, and a failing endpoint is backed off for 15 minutes, so a blocked or rate-limited API does not get hammered.\n\n• The helper must be installed at ~/.local/bin/nipe-widget-py. Run it with no arguments to see the commands it accepts.\n\n• Auto-start only activates once per session, and only after a clean status read, so a failed start is not retried in a loop.\n\n• Logs go to ~/.local/share/nipeControl/nipe-widget-py.log."
+                text: "• Status reads are silent and unprivileged, so the refresh interval never triggers a prompt. While the gateway is active it polls at the configured interval; while it is off it backs off to at least 2 minutes.\n\n• Exit node lookups are cached per IP for 6 hours, and a failing endpoint is backed off for 15 minutes, so a blocked or rate-limited API does not get hammered.\n\n• The bundled helper runs straight from the plugin directory; no manual install is needed. Run nipe-widget-py with no arguments to see the commands it accepts.\n\n• Auto-start only activates once per session, and only after a clean status read, so a failed start is not retried in a loop.\n\n• Logs go to ~/.local/share/nipeControl/nipe-widget-py.log."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap
@@ -294,14 +299,14 @@ PluginSettings {
             anchors.margins: Theme.spacingL
             spacing: Theme.spacingM
 
-            Row {
-                verticalAlignment: Text.AlignVCenter
+            RowLayout {
                 spacing: Theme.spacingS
 
                 DankIcon {
                     name: "extension"
                     size: Theme.iconSize
                     color: Theme.primary
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 StyledText {
@@ -309,11 +314,12 @@ PluginSettings {
                     font.pixelSize: Theme.fontSizeMedium
                     font.weight: Font.Medium
                     color: Theme.surfaceText
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
             StyledText {
-                text: "Required:\n\n• perl with Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL and Net::SSLeay — run by nipe.pl\n• curl — the status probe and the exit node lookup\n• pkexec (polkit) — only for Start, Stop and Restart\n\nOptional:\n\n• notify-send (libnotify) — desktop notifications\n• wl-copy or xclip (or dms) — the copy IP button\n\nRun ~/.local/bin/nipe-widget-py check-deps for the current state. The result is cached for a day, and missing optional tools are reported without affecting the status read."
+                text: "Required:\n\n• python3 — runs the bundled nipe-widget-py helper\n• perl with Config::Simple, JSON, Readonly, Try::Tiny, IO::Socket::SSL and Net::SSLeay — run by nipe.pl\n• curl — the status probe and the exit node lookup\n• polkit (pkexec) — only for Start, Stop and Restart\n• tor and the Nipe checkout\n\nNotifications and the copy IP button use the shell's own dms notify and dms cl copy commands, so libnotify and wl-clipboard are not needed. Run the helper's check-deps command for the current state; the result is cached for a day."
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
                 wrapMode: Text.WordWrap

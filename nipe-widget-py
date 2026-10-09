@@ -20,7 +20,9 @@ Design
   the current connection is a Tor circuit. The widget asks the same endpoint
   through the local SOCKS port instead, so the panel learns "is Tor up" and
   "which exit node" in a single request and the user is never prompted just to
-  look at the bar. pkexec is reserved for the actions that really need root.
+  look at the bar. If nothing is listening on the local SOCKS port the probe
+  returns straight away without any network traffic, so an off gateway stays
+  cheap to watch. pkexec is reserved for the actions that really need root.
 * `error` is either JSON null or a plain message. It is never a pre-quoted
   string and never the literal text "null".
 * Precedence for every setting: command line, then the config file
@@ -33,13 +35,14 @@ import logging
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 APP = "nipeControl"
 
 DATA_DIR = os.path.expanduser("~/.local/share/nipeControl")
@@ -71,7 +74,7 @@ REQUIRED_PERL_MODULES = (
     "IO::Socket::SSL",
     "Net::SSLeay",
 )
-OPTIONAL_COMMANDS = ("pkexec", "notify-send", "wl-copy", "xclip", "dms")
+OPTIONAL_COMMANDS = ("pkexec",)
 
 
 def _ensure_data_dir() -> bool:
@@ -338,15 +341,30 @@ class NipeWidgetPy:
             return None, f"{url} returned an unexpected payload"
         return data, None
 
+    def _socks_port_open(self) -> bool:
+        """Cheap local check so an off gateway never costs a network request."""
+        try:
+            with socket.create_connection(
+                ("127.0.0.1", self.config.tor_socks_port), timeout=0.5
+            ):
+                return True
+        except OSError:
+            return False
+
     def probe_tor(self) -> Tuple[bool, str, Optional[str]]:
         """Ask the Tor check endpoint through SOCKS. Returns (active, ip, error).
 
-        A SOCKS answer is authoritative: if the local Tor instance answers, the
+        Nothing listening on the local SOCKS port means Nipe/Tor is off, so the
+        probe returns immediately without touching the network at all. That is
+        what keeps the widget cheap while it is idle. When the port is open a
+        SOCKS answer is authoritative: if the local Tor instance answers, the
         gateway is up and `IsTor` plus `IP` are the exit node. Only when SOCKS
-        is silent do we fall back to a direct request, and that direct answer
-        can never report a Tor circuit, so a reachable endpoint means "Tor is
-        down" rather than "Tor is up".
+        is silent with the port still open do we fall back to a direct request
+        to tell a Tor problem apart from a broken network.
         """
+        if not self._socks_port_open():
+            return False, "", None
+
         socks_host = f"127.0.0.1:{self.config.tor_socks_port}"
         url = self.config.tor_check_url
 

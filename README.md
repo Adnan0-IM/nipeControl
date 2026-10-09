@@ -8,7 +8,7 @@
 
 - **Live widget**: Real-time status, external IP, exit city and country.
 - **Controls**: Start / Stop / Restart with one click.
-- **Copy IP** to clipboard (`wl-copy` / `xclip` / `dms`).
+- **Copy IP** to clipboard via `dms cl copy`.
 - **Notifications**: Desktop alerts on status changes.
 - **Silent polling**: reading the status is unprivileged, so the refresh timer never interrupts you.
 - **Python helper** (`nipe-widget-py`): no bash script and no sudoers file — `pkexec` shows a desktop auth popup for the actions that need root.
@@ -18,11 +18,13 @@
 ## Requirements
 
 - Nipe (`~/nipe` or custom path)
+- `python3` — runs the bundled `nipe-widget-py` helper (no manual install; it runs from the plugin directory)
 - Perl 5.30+ with `Config::Simple`, `JSON`, `Readonly`, `Try::Tiny`, `IO::Socket::SSL`, `Net::SSLeay`
 - `tor`
 - `curl` — the status probe and the exit node lookup
 - `pkexec` (polkit) — only for Start / Stop / Restart
-- Optional: `notify-send` (from `libnotify`) for notifications, `wl-copy` / `xclip` / `dms` for the copy button
+
+Notifications and the copy IP button use the shell's built-in `dms notify` and `dms cl copy`, so `libnotify` and `wl-clipboard` are not needed.
 
 ---
 
@@ -30,18 +32,18 @@
 
 ### Arch / Manjaro
 ```bash
-sudo pacman -S perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor wl-clipboard curl libnotify pkexec
+sudo pacman -S python perl perl-config-simple perl-json perl-readonly perl-io-socket-ssl perl-net-ssleay tor curl polkit
 ```
 
 ### Debian / Ubuntu / Mint
 ```bash
 sudo apt update
-sudo apt install -y perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor wl-clipboard curl libnotify-bin policykit-1
+sudo apt install -y python3 perl libconfig-simple-perl libjson-perl libreadonly-perl libio-socket-ssl-perl libnet-ssleay-perl tor curl policykit-1
 ```
 
 ### Fedora / RHEL
 ```bash
-sudo dnf install perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor wl-clipboard curl libnotify polkit
+sudo dnf install python3 perl perl-Config-Simple perl-JSON perl-Readonly perl-IO-Socket-SSL perl-Net-SSLeay tor curl polkit
 ```
 
 ### CPAN (if packages missing)
@@ -63,32 +65,29 @@ sudo perl nipe.pl install
 
 ---
 
-## Install Plugin Helper
+## Plugin Helper
 
-`NipeControl.qml` runs `$HOME/.local/bin/nipe-widget-py`. The canonical copy is
-the `nipe-widget-py` file in this plugin directory, so link it and keep a single
-source of truth:
+No manual install is needed. DMS unpacks the whole plugin directory, so
+`NipeControl.qml` runs the bundled `nipe-widget-py` straight from there. Just
+make sure `python3` is available.
+
+You can run the helper by hand from the plugin directory to verify it:
+
+```bash
+./nipe-widget-py json-status
+```
+
+A single JSON object means the helper is healthy. With Tor off it reports
+`"active": false` and `"error": null`.
+
+As a fallback for older or manual setups, the widget also looks for
+`~/.local/bin/nipe-widget-py` when the plugin path cannot be resolved. Linking
+is optional and only useful if you keep a separate copy:
 
 ```bash
 mkdir -p ~/.local/bin
 ln -s "$(pwd)/nipe-widget-py" ~/.local/bin/nipe-widget-py
 ```
-
-Copying works too, if you would rather not depend on the plugin folder staying
-put:
-
-```bash
-cp ./nipe-widget-py ~/.local/bin/ && chmod +x ~/.local/bin/nipe-widget-py
-```
-
-Verify before enabling the plugin:
-
-```bash
-~/.local/bin/nipe-widget-py json-status
-```
-
-A single JSON object means the helper is healthy. With Tor off it reports
-`"active": false` and `"error": null`.
 
 ---
 
@@ -98,7 +97,7 @@ A single JSON object means the helper is healthy. With Tor off it reports
 2. Go to **Plugins**, enable **Nipe Control**.
 3. In settings, configure:
    - **Custom Nipe Directory** — if not `~/nipe`; takes precedence over `NIPE_DIR` and over auto-detection
-   - **Refresh Interval** (default `15` sec, minimum `5` sec)
+   - **Refresh Interval** (default `30` sec, minimum `15` sec; while the gateway is off it backs off to at least 2 min)
    - **Show Country**, **Notifications**, **Auto-start**, **IP API endpoint**
 
 ---
@@ -113,10 +112,10 @@ nipe-widget-py path [--nipe-dir DIR]
 ```
 
 ```bash
-~/.local/bin/nipe-widget-py json-status
-~/.local/bin/nipe-widget-py json-status --api https://ipapi.co
-~/.local/bin/nipe-widget-py path --nipe-dir /opt/nipe
-~/.local/bin/nipe-widget-py check-deps
+./nipe-widget-py json-status
+./nipe-widget-py json-status --api https://ipapi.co
+./nipe-widget-py path --nipe-dir /opt/nipe
+./nipe-widget-py check-deps
 ```
 
 `json-status` never elevates. `start`, `stop`, `restart` and `status` run `nipe.pl` as
@@ -155,16 +154,19 @@ No `/etc/sudoers.d/nipe` is created or needed.
 
 The widget's own status refresh does not use `nipe.pl` at all. `nipe.pl status`
 only asks the Tor Project whether the connection is a Tor circuit, so the helper
-asks the same endpoint directly through the local SOCKS port:
+first checks whether anything is listening on the local SOCKS port. If nothing
+is, the gateway is off and the probe stops there with no network traffic. When
+the port is open it asks the check endpoint through it:
 
 ```bash
 curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
 ```
 
 If the local Tor instance answers, the gateway is up and the reply carries the
-exit IP. If SOCKS is silent, one direct request decides whether Tor is down or
-the network itself is unreachable. Nothing here needs root, so the refresh timer
-can run as often as you like without a single prompt.
+exit IP. If SOCKS is silent with the port still open, one direct request decides
+whether Tor is down or the network itself is unreachable. Nothing here needs
+root, so the refresh timer never triggers a prompt; it also backs off to at least
+2 minutes while the gateway is off.
 
 **Auto-start on Login** raises the usual polkit dialog once, because it runs
 `nipe.pl start`.
@@ -185,9 +187,9 @@ can run as often as you like without a single prompt.
   `~/.local/share/nipeControl/nipe-widget-py.log`.
 - **No polkit dialog on Start/Stop**: install `polkit` and make sure your session
   can ask for authentication.
-- **Missing dependencies**: `~/.local/bin/nipe-widget-py check-deps` lists what
-  is missing; the result is cached for a day. Optional tools are reported
-  separately and do not affect the status read.
+- **Missing dependencies**: `./nipe-widget-py check-deps` (from the plugin
+  directory) lists what is missing; the result is cached for a day. Optional
+  tools are reported separately and do not affect the status read.
 - **Country never appears**: the endpoint is blocked or rate-limited. The lookup
   is cached per IP for 6 hours and a failing endpoint is backed off for 15
   minutes. Point **IP API endpoint** at another provider if needed.
