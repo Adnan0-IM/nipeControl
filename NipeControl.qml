@@ -327,7 +327,7 @@ PluginComponent {
         RowLayout {
             spacing: Theme.spacingXS
 
-            DankSpinner {
+            NipeSpinner {
                 size: Theme.iconSize - 6
                 running: root.isActionRunning || root.isManualRefreshing
                 visible: running
@@ -370,7 +370,7 @@ PluginComponent {
         ColumnLayout {
             spacing: Theme.spacingXS
 
-            DankSpinner {
+            NipeSpinner {
                 size: Theme.iconSize - 8
                 running: root.isActionRunning || root.isManualRefreshing
                 visible: running
@@ -386,7 +386,7 @@ PluginComponent {
             }
 
             StyledText {
-                text: root.isActionRunning ? "…" : (root.errorMessage !== "" ? "!" : (root.nipeActive ? "ON" : "OFF"))
+                text: root.isActionRunning ? "…" : (root.errorMessage !== "" ? "!" : (root.nipeActive ? "TOR" : "OFF"))
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
                 color: root.errorMessage !== "" ? Theme.error : (root.nipeActive ? Theme.primary : Theme.surfaceVariantText)
@@ -459,7 +459,7 @@ PluginComponent {
                             width: parent.width
                             spacing: Theme.spacingM
 
-                            DankSpinner {
+                            NipeSpinner {
                                 size: Theme.iconSizeLarge
                                 running: root.isActionRunning
                                 visible: running
@@ -709,7 +709,7 @@ PluginComponent {
                         Layout.alignment: Qt.AlignVCenter
                     }
 
-                    DankSpinner {
+                    NipeSpinner {
                         id: footerSpinner
                         size: Theme.iconSizeSmall
                         running: root.isManualRefreshing
